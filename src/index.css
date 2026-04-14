@@ -1,0 +1,15 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    @apply antialiased font-sans;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}

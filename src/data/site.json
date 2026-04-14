@@ -1,0 +1,66 @@
+{
+  "salon": {
+    "name": "Meena's Beauty Parlour",
+    "tagline": "Enhancing Your Natural Beauty",
+    "description": "A premium beauty salon in the heart of Thanjavur, dedicated to making every woman look and feel her absolute best.",
+    "phone": "+91 94431 41261",
+    "whatsapp": "917010473998",
+    "instagram": "meenas_beauty_parlour_",
+    "email": "meenasbeautyparlour@gmail.com",
+    "address": "Kalyani covering upstairs, bus stand, Southeast rampart, old, near Poorvika mobiles, Thanjavur, Tamil Nadu 613001",
+    "hours": "Mon–Sat: 9:00 AM – 8:00 PM | Sun: 10:00 AM – 6:00 PM",
+    "happyCustomers": "350+",
+    "yearsExperience": "20+",
+    "services": "20+"
+  },
+  "about": {
+    "story": "Founded over a decade ago by Meena, our parlour has grown to become one of Thanjavur's most loved beauty destinations. We blend traditional beauty wisdom with modern techniques to deliver results that are truly transformative.",
+    "ownerMessage": "Beauty is not just about looking good — it's about feeling confident, radiant, and most importantly, yourself. Every woman who walks through our doors deserves to leave feeling like the best version of herself.",
+    "ownerName": "Meena",
+    "ownerTitle": "Founder & Lead Beautician"
+  },
+  "services": [
+    { "id": 1, "name": "Bridal Makeup", "description": "Complete bridal look with traditional & contemporary styles", "price": "₹5,000 onwards", "duration": "3-4 hrs" },
+    { "id": 2, "name": "Hair Styling", "description": "Cuts, colour, keratin treatments & more", "price": "₹300 onwards", "duration": "45 mins" },
+    { "id": 3, "name": "Facial & Skin Care", "description": "Deep cleansing, brightening & anti-ageing facials", "price": "₹500 onwards", "duration": "60 mins" },
+    { "id": 4, "name": "Mehendi", "description": "Bridal & party mehendi with intricate designs", "price": "₹800 onwards", "duration": "1-3 hrs" },
+    { "id": 5, "name": "Threading & Waxing", "description": "Eyebrow threading, full-body waxing & more", "price": "₹50 onwards", "duration": "15 mins" },
+    { "id": 6, "name": "Manicure & Pedicure", "description": "Nail care, spa treatments & nail art", "price": "₹400 onwards", "duration": "45 mins" }
+  ],
+  "offers": [
+    {
+      "id": 1,
+      "title": "Bridal Package",
+      "subtitle": "Complete Bridal Glow",
+      "items": ["Bridal Makeup", "Mehendi", "Hair Styling", "Facial", "Manicure & Pedicure"],
+      "originalPrice": "₹12,000",
+      "offerPrice": "₹8,999",
+      "badge": "Most Popular"
+    },
+    {
+      "id": 2,
+      "title": "Facial Combo",
+      "subtitle": "Skin Radiance Bundle",
+      "items": ["Deep Cleansing Facial", "Eyebrow Threading", "Lip Care", "Head Massage"],
+      "originalPrice": "₹2,500",
+      "offerPrice": "₹1,499",
+      "badge": "Best Value"
+    },
+    {
+      "id": 3,
+      "title": "Seasonal Offer",
+      "subtitle": "Festive Glow Package",
+      "items": ["Party Makeup", "Hair Styling", "Mehendi", "Manicure"],
+      "originalPrice": "₹4,000",
+      "offerPrice": "₹2,799",
+      "badge": "Limited Time"
+    }
+  ],
+  "reviews": [
+    { "id": 1, "name": "Priya S.", "review": "Meena's parlour is my go-to for all beauty needs! The bridal package was absolutely stunning. I've never felt more beautiful on my wedding day.", "rating": 5 },
+    { "id": 2, "name": "Kavitha R.", "review": "Excellent service and very professional staff. The facial combo left my skin glowing for weeks. Highly recommend!", "rating": 5 },
+    { "id": 3, "name": "Anitha M.", "review": "Amazing place! The mehendi designs are so intricate and beautiful. Booking was easy and the staff is very warm.", "rating": 5 },
+    { "id": 4, "name": "Lakshmi T.", "review": "I've been coming here for 3 years and the quality never drops. Best parlour in Thanjavur, no question!", "rating": 5 },
+    { "id": 5, "name": "Deepa N.", "review": "The hair treatment was wonderful. They really listened to what I wanted and delivered perfectly. Will definitely return!", "rating": 5 }
+  ]
+}
