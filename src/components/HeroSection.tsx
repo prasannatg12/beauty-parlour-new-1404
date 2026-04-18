@@ -6,10 +6,13 @@ export default function HeroSection() {
       id="hero"
       className="relative min-h-screen flex items-center justify-center text-white overflow-hidden"
       style={{
-        background: "linear-gradient(135deg, #831843 0%, #9d174d 40%, #be185d 70%, #db2777 100%)",
+        background: "linear-gradient(135deg, #831843 100%, #9d174d 80%, #be185d 0%, #db2777 0%)",
       }}
     >
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div>
+        <img src="/public/gallery/bg.jpg" alt="Salon Hero" className="absolute inset-0 w-full h-full object-cover opacity-20" />
+      </div>
+      {/* <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(8)].map((_, i) => (
           <div
             key={i}
@@ -25,7 +28,7 @@ export default function HeroSection() {
             }}
           />
         ))}
-      </div>
+      </div> */}
 
       <div className="relative z-10 text-center px-6 max-w-4xl mx-auto">
         <p className="text-pink-200 text-sm font-semibold tracking-[0.3em] uppercase mb-4">
