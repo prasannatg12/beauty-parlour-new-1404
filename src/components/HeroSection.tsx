@@ -1,5 +1,6 @@
 import siteData from "../data/site.json";
 
+
 export default function HeroSection() {
   return (
     <section
@@ -10,7 +11,7 @@ export default function HeroSection() {
       }}
     >
       <div>
-        <img src="/public/gallery/bg.jpg" alt="Salon Hero" className="absolute inset-0 w-full h-full object-cover opacity-20" />
+        <img src="/gallery/bg.jpg" alt="Salon Hero" className="absolute inset-0 w-full h-full object-cover opacity-20" />
       </div>
       {/* <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(8)].map((_, i) => (
