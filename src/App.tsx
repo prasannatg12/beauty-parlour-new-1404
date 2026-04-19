@@ -10,8 +10,10 @@ import Footer from "@/components/Footer";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import DemoBanner from "@/components/DemoBanner";
 import { Analytics } from "@vercel/analytics/react";
+import useTrackVisit from "./hooks/trackVisit.js";
 
 export default function App() {
+  useTrackVisit();
   return (
     <div className="scroll-smooth">
       <Navbar />
