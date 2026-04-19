@@ -65,6 +65,7 @@
     "@replit/vite-plugin-dev-banner": "^0.1.2",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.6",
     "@tailwindcss/vite": "^4.2.2",
+    "@vercel/analytics": "^2.0.1",
     "path": "^0.12.7",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
