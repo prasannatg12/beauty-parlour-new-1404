@@ -11,11 +11,17 @@ import WhatsAppButton from "@/components/WhatsAppButton";
 import DemoBanner from "@/components/DemoBanner";
 import { Analytics } from "@vercel/analytics/react";
 import useTrackVisit from "./hooks/trackVisit.js";
+import { useEffect } from "react";
 
 export default function App() {
   useTrackVisit();
   return (
-    <div className="scroll-smooth">
+    <>
+    <DemoBanner />
+    <div className="scroll-smooth"
+    style={{
+      top: 25,
+    }}>
       <Navbar />
            <Analytics />
       <HeroSection />
@@ -26,8 +32,8 @@ export default function App() {
       <ReviewsSection />
       <ContactSection />
       <Footer />
-       <DemoBanner /> 
       <WhatsAppButton />
     </div>
+    </>
   );
 }
