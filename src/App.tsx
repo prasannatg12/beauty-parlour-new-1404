@@ -8,11 +8,13 @@ import ReviewsSection from "@/components/ReviewsSection";
 import ContactSection from "@/components/ContactSection";
 import Footer from "@/components/Footer";
 import WhatsAppButton from "@/components/WhatsAppButton";
+import DemoBanner from "@/components/DemoBanner";
 
 export default function App() {
   return (
     <div className="scroll-smooth">
       <Navbar />
+     
       <HeroSection />
       <AboutSection />
       <ServicesSection />
@@ -21,6 +23,7 @@ export default function App() {
       <ReviewsSection />
       <ContactSection />
       <Footer />
+       <DemoBanner /> 
       <WhatsAppButton />
     </div>
   );

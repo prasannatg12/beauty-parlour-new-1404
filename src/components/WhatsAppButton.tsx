@@ -5,8 +5,9 @@ export default function WhatsAppButton() {
   const href = `https://wa.me/${siteData.salon.whatsapp}?text=${message}`;
   return (
     <a
-      href={href}
-      target="_blank"
+      // href={href}
+      // target="_blank"
+      href="/"
       rel="noopener noreferrer"
       className="fixed bottom-6 right-6 z-50 bg-green-500 hover:bg-green-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all hover:scale-110"
       aria-label="Chat on WhatsApp"
