@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import siteData from "../data/site.json";
 import supabase from "../hooks/supabaseClient";
+import { User } from "lucide-react";
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -87,7 +88,7 @@ export default function Navbar() {
                   isSolid ? "text-gray-700" : "text-white"
                 }`}
               >
-                {l.label}
+              {l.label === "Admin" ? <User size={20} title="Admin Portal" /> : l.label}
               </Link>
             )
           ))}
@@ -145,7 +146,7 @@ export default function Navbar() {
                 onClick={() => setMenuOpen(false)}
                 className="block text-gray-700 font-medium hover:text-pink-600 py-1"
               >
-                {l.label}
+                {l.label === "Admin" ? <User size={20} className="inline" /> : l.label}
               </Link>
             )
           ))}

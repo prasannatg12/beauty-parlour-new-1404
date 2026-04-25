@@ -70,7 +70,7 @@ export default function App() {
           <Route path="/admin" element={<AdminPage />} />
         </Routes>
 
-        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-1/2 z-[100]">
+        <div className="fixed bottom-0 left-0 w-1/2 z-[100]">
           <DemoBanner />
         </div>
         <WhatsAppButton />

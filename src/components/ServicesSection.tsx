@@ -1,5 +1,4 @@
-import { useState, type FormEvent } from "react";
-import siteData from "../data/site.json";
+import { useState, useEffect, type FormEvent } from "react";
 import supabase from "../hooks/supabaseClient";
 import {
   Dialog,
@@ -33,6 +32,8 @@ type BookingErrors = Partial<Record<keyof Omit<BookingForm, "email" | "notes">, 
 
 export default function ServicesSection() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [services, setServices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [booking, setBooking] = useState<BookingForm>({
     name: "",
     phone: "",
@@ -43,6 +44,20 @@ export default function ServicesSection() {
   });
   const [formErrors, setFormErrors] = useState<BookingErrors>({});
   const [submissionState, setSubmissionState] = useState<"idle" | "submitting" | "success" | "error">("idle");
+
+  useEffect(() => {
+    const fetchServices = async () => {
+      const { data, error } = await supabase
+        .from("service")
+        .select("*")
+        .eq("isdeleted", false)
+        .order("id", { ascending: true });
+      
+      if (data) setServices(data);
+      setLoading(false);
+    };
+    fetchServices();
+  }, []);
 
   const openBookingDialog = (serviceName: string) => {
     setBooking((prev) => ({ ...prev, service: serviceName }));
@@ -72,10 +87,13 @@ export default function ServicesSection() {
 
   const handleBookingSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    // Reset submission and error states immediately on click
+    setSubmissionState("idle");
+    setFormErrors({});
+
     const errors = validateBooking();
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
-      setSubmissionState("error");
       return;
     }
 
@@ -109,6 +127,14 @@ export default function ServicesSection() {
     setBooking({ name: "", phone: "", email: "", service: "", preferredTime: "", notes: "" });
   };
 
+  // Helper to update booking state and clear specific field error
+  const updateField = (field: keyof BookingForm, value: string) => {
+    setBooking(prev => ({ ...prev, [field]: value }));
+    if (formErrors[field as keyof BookingErrors]) {
+      setFormErrors(prev => ({ ...prev, [field]: undefined }));
+    }
+  };
+
   const inputCls =
     "w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white";
 
@@ -121,8 +147,13 @@ export default function ServicesSection() {
           <div className="w-16 h-1 bg-pink-500 mx-auto mt-4 rounded-full" />
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {siteData.services.map((service) => (
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-pink-600"></div>
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {services.map((service) => (
             <div
               key={service.id}
               className="group bg-rose-50 hover:bg-pink-600 rounded-2xl p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1"
@@ -137,7 +168,7 @@ export default function ServicesSection() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-pink-600 group-hover:text-white font-bold text-lg">
-                    {service.price}
+                    ₹{service.price} onwards
                   </p>
                   <p className="text-gray-400 group-hover:text-pink-200 text-xs">
                     {service.duration}
@@ -153,7 +184,8 @@ export default function ServicesSection() {
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        )}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -192,7 +224,7 @@ export default function ServicesSection() {
                     className={inputCls}
                     placeholder="Your Name"
                     value={booking.name}
-                    onChange={(e) => setBooking({ ...booking, name: e.target.value })}
+                      onChange={(e) => updateField("name", e.target.value)}
                   />
                   {formErrors.name && <p className="text-red-500 text-xs mt-1">{formErrors.name}</p>}
                 </div>
@@ -203,7 +235,7 @@ export default function ServicesSection() {
                     className={inputCls}
                     placeholder="10 digit number"
                     value={booking.phone}
-                    onChange={(e) => setBooking({ ...booking, phone: e.target.value })}
+                      onChange={(e) => updateField("phone", e.target.value)}
                   />
                   {formErrors.phone && <p className="text-red-500 text-xs mt-1">{formErrors.phone}</p>}
                 </div>
@@ -215,7 +247,7 @@ export default function ServicesSection() {
                     type="email"
                     placeholder="Optional email address"
                     value={booking.email}
-                    onChange={(e) => setBooking({ ...booking, email: e.target.value })}
+                      onChange={(e) => updateField("email", e.target.value)}
                   />
                 </div>
 
@@ -224,10 +256,10 @@ export default function ServicesSection() {
                   <select
                     className={inputCls}
                     value={booking.service}
-                    onChange={(e) => setBooking({ ...booking, service: e.target.value })}
+                      onChange={(e) => updateField("service", e.target.value)}
                   >
                     <option value="">Select a Service</option>
-                    {siteData.services.map((serviceOption) => (
+                    {services.map((serviceOption) => (
                       <option key={serviceOption.id} value={serviceOption.name}>
                         {serviceOption.name}
                       </option>
@@ -237,12 +269,13 @@ export default function ServicesSection() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-semibold text-gray-700">Preferred Time *</label>
+                  <label className="text-sm font-semibold text-gray-700">Preferred Date & Time *</label>
                   <input
+                    type="datetime-local"
                     className={inputCls}
-                    placeholder="Preferred time (e.g., Mon 10 AM)"
                     value={booking.preferredTime}
-                    onChange={(e) => setBooking({ ...booking, preferredTime: e.target.value })}
+                      onChange={(e) => updateField("preferredTime", e.target.value)}
+                    required
                   />
                   {formErrors.preferredTime && <p className="text-red-500 text-xs mt-1">{formErrors.preferredTime}</p>}
                 </div>
@@ -253,7 +286,7 @@ export default function ServicesSection() {
                     className={`${inputCls} h-28 resize-none`}
                     placeholder="Optional notes"
                     value={booking.notes}
-                    onChange={(e) => setBooking({ ...booking, notes: e.target.value })}
+                      onChange={(e) => updateField("notes", e.target.value)}
                   />
                 </div>
               </div>
