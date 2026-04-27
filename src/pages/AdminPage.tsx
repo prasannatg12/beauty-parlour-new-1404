@@ -100,9 +100,11 @@ const formatBookingDate = (dateStr: string) => {
 const isCurrentWeek = (dateString: string) => {
   const bookingDate = new Date(dateString);
   const today = new Date();
+  const day = today.getDay();
+  const diff = today.getDate() - day + (day === 0 ? -6 : 1); // Monday
   
   const firstDayOfWeek = new Date(today);
-  firstDayOfWeek.setDate(today.getDate() - today.getDay()); // Sunday
+  firstDayOfWeek.setDate(diff);
   firstDayOfWeek.setHours(0, 0, 0, 0);
 
   const lastDayOfWeek = new Date(firstDayOfWeek);
@@ -116,11 +118,18 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [bookings, setBookings] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
+  const [staff, setStaff] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [isServiceFormOpen, setIsServiceFormOpen] = useState(false);
+  const [weekOffset, setWeekOffset] = useState(0);
   const [serviceForm, setServiceForm] = useState({ name: "", description: "", price: "", duration: "" });
   const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
+  const [isStaffFormOpen, setIsStaffFormOpen] = useState(false);
+  const [staffForm, setStaffForm] = useState({ name: "", role: "", phone: "", email: "" });
+  const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTempStatus, setEditTempStatus] = useState<BookingStatus | null>(null);
+  const [editTempStaffId, setEditTempStaffId] = useState<string | null>(null);
   const [selectedCustomerPhone, setSelectedCustomerPhone] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isAddAppointmentFormOpen, setIsAddAppointmentFormOpen] = useState(false);
@@ -134,22 +143,36 @@ export default function AdminPage() {
   const [selectedDateFilter, setSelectedDateFilter] = useState("");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("");
   const [customerSearchTerm, setCustomerSearchTerm] = useState("");
+  const [staffSearchTerm, setStaffSearchTerm] = useState("");
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false);
   const [customerForm, setCustomerForm] = useState({
     name: "",
     phone: "",
     email: "",
     service: "",
-    preferred_time: ""
+    preferred_time: "",
+    staff_id: ""
   });
   
+  const tabDescriptions: Partial<Record<Section, string>> = {
+    Dashboard: "Real-time overview of your salon's performance and activity.",
+    Appointments: "Organize and track your upcoming client appointments.",
+    Customers: "Maintain and view your comprehensive client database.",
+    Services: "Manage your parlour's service offerings and pricing structure.",
+    Billing: "Track customer payments and financial records.",
+    Inventory: "Monitor salon products and stock levels.",
+  };
+
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   const fetchBookings = async () => {
     const { data, error } = await supabase
       .from("booking")
-      .select("*")
+      .select(`
+        *,
+        staff:staff_id (name)
+      `)
       .order("created_on", { ascending: false });
       
     if (error) {
@@ -157,7 +180,6 @@ export default function AdminPage() {
     } else {
       setBookings(data || []);
     }
-    setLoading(false);
   };
 
   const fetchPayments = async () => {
@@ -187,6 +209,16 @@ export default function AdminPage() {
     setLoading(false);
   };
 
+  const fetchStaff = async () => {
+    const { data, error } = await supabase
+      .from("staff")
+      .select("*")
+      .eq("isdeleted", false)
+      .order("name", { ascending: true });
+    
+    if (data) setStaff(data);
+  };
+
   useEffect(() => {
     const loadDataForTab = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -199,11 +231,13 @@ export default function AdminPage() {
           if (activeTab === "Dashboard") {
             await Promise.all([fetchBookings(), fetchPayments()]);
           } else if (activeTab === "Appointments") {
-            await Promise.all([fetchBookings(), fetchServices(), fetchPayments()]); // Fetch all concurrently
+            await Promise.all([fetchBookings(), fetchServices(), fetchPayments(), fetchStaff()]);
           } else if (activeTab === "Customers") {
-            await Promise.all([fetchBookings(), fetchServices(), fetchPayments()]); // Fetch all concurrently
+            await Promise.all([fetchBookings(), fetchServices(), fetchPayments(), fetchStaff()]);
           } else if (activeTab === "Services") {
             await fetchServices();
+          } else if (activeTab === "Staff") {
+            await fetchStaff();
           } else if (activeTab === "Billing") {
             await fetchPayments();
           }
@@ -219,7 +253,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchTerm, customerSearchTerm, selectedServiceFilter, selectedDateFilter, selectedStatusFilter, selectedCustomerPhone]);
+  }, [activeTab, searchTerm, customerSearchTerm, staffSearchTerm, selectedServiceFilter, selectedDateFilter, selectedStatusFilter, selectedCustomerPhone]);
 
   // Real-time subscription for booking updates
   useEffect(() => {
@@ -277,6 +311,76 @@ export default function AdminPage() {
       setEditingId(null);
     } catch (err: any) {
       alert("Failed to update status: " + err.message);
+    }
+  };
+
+  const handleSaveEdit = async (bookingId: string) => {
+    if (!editTempStatus) return;
+    
+    try {
+      const booking = bookings.find(b => b.id === bookingId);
+      if (!booking) return;
+
+      const updates: any = {
+        updated_on: new Date().toISOString()
+      };
+      
+      let statusChanged = false;
+      if (editTempStatus !== (booking.status || "Pending")) {
+        updates.status = editTempStatus;
+        statusChanged = true;
+      }
+      
+      if (editTempStaffId !== (booking.staff_id || "")) {
+        updates.staff_id = editTempStaffId || null;
+      }
+
+      if (statusChanged || updates.staff_id !== undefined) {
+        const { error } = await supabase
+          .from("booking")
+          .update(updates)
+          .eq("id", bookingId);
+
+        if (error) throw error;
+
+        if (statusChanged && editTempStatus === "Completed") {
+          const { data: serviceData } = await supabase
+            .from("service")
+            .select("price")
+            .eq("name", booking.service)
+            .single();
+
+          await supabase.from("payment").insert([{
+            booking_id: bookingId,
+            amount: serviceData?.price?.toString().replace(/[₹\s,]|onwards/g, '') || "0",
+            status: "pending"
+          }]);
+        }
+      }
+
+      setEditingId(null);
+      setEditTempStatus(null);
+      setEditTempStaffId(null);
+      fetchBookings();
+    } catch (err: any) {
+      alert("Failed to save changes: " + err.message);
+    }
+  };
+
+  const handleStaffAssign = async (bookingId: string, staffId: string | null) => {
+    try {
+      const { error } = await supabase
+        .from("booking")
+        .update({ 
+          staff_id: staffId || null,
+          updated_on: new Date().toISOString()
+        })
+        .eq("id", bookingId);
+      
+      if (error) throw error;
+      fetchBookings(); // Refresh list to update the joined staff name display
+    } catch (err: any) {
+      alert("Failed to assign staff: " + err.message);
     }
   };
 
@@ -355,6 +459,7 @@ export default function AdminPage() {
           service: customerForm.service,
           preferred_time: customerForm.preferred_time || "Walk-in",
           status: "Confirmed",
+          staff_id: customerForm.staff_id || null,
           created_by: "Admin",
           created_on: now,
           updated_by: "Admin",
@@ -389,6 +494,7 @@ export default function AdminPage() {
           preferred_time: newAppointmentForm.preferred_time,
           notes: newAppointmentForm.notes.trim() || null,
           status: "Confirmed",
+          staff_id: (e.target as any).staff_id.value || null,
           created_by: "Admin",
           created_on: now,
           updated_by: "Admin",
@@ -406,6 +512,36 @@ export default function AdminPage() {
     }
   };
 
+  const handleStaffSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingStaffId) {
+        const { error } = await supabase.from("staff").update(staffForm).eq("id", editingStaffId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("staff").insert([staffForm]);
+        if (error) throw error;
+      }
+      setIsStaffFormOpen(false);
+      setEditingStaffId(null);
+      setStaffForm({ name: "", role: "", phone: "", email: "" });
+      fetchStaff();
+    } catch (err: any) {
+      alert("Error saving staff: " + err.message);
+    }
+  };
+
+  const handleDeleteStaff = async (id: string) => {
+    if (!window.confirm("Are you sure you want to remove this staff member?")) return;
+    try {
+      const { error } = await supabase.from("staff").update({ isdeleted: true }).eq("id", id);
+      if (error) throw error;
+      fetchStaff();
+    } catch (err: any) {
+      alert("Error deleting staff: " + err.message);
+    }
+  };
+
   const kpiData = useMemo(() => {
     const totalAppointments = bookings.length;
     const currentWeekAppointments = bookings.filter(b => isCurrentWeek(b.created_on)).length;
@@ -417,7 +553,7 @@ export default function AdminPage() {
     const totalRevenue = payments
       .filter(p => p.status === 'paid')
       .reduce((sum, p) => {
-        const amt = p.amount?.toString().replace(/,/g, '') || "0";
+        const amt = p.amount?.toString().replace(/[^\d.]/g, '') || "0";
         return sum + (parseFloat(amt) || 0);
       }, 0);
       
@@ -429,14 +565,14 @@ export default function AdminPage() {
 
     const todayRevenue = payments
       .filter(p => p.status === 'paid' && new Date(p.updated_at) >= todayStart)
-      .reduce((sum, p) => sum + (parseFloat(p.amount?.toString().replace(/,/g, '') || "0") || 0), 0);
+      .reduce((sum, p) => sum + (parseFloat(p.amount?.toString().replace(/[^\d.]/g, '') || "0") || 0), 0);
 
     const yesterdayRevenue = payments
       .filter(p => {
         const d = new Date(p.updated_at);
         return p.status === 'paid' && d >= yesterdayStart && d < todayStart;
       })
-      .reduce((sum, p) => sum + (parseFloat(p.amount?.toString().replace(/,/g, '') || "0") || 0), 0);
+      .reduce((sum, p) => sum + (parseFloat(p.amount?.toString().replace(/[^\d.]/g, '') || "0") || 0), 0);
 
     const profitTrend = todayRevenue > yesterdayRevenue ? 'up' : todayRevenue < yesterdayRevenue ? 'down' : 'neutral';
 
@@ -450,48 +586,57 @@ export default function AdminPage() {
 
   const performanceData = useMemo(() => {
     const today = new Date();
-    const startOfWeek = new Date(today);
     const day = today.getDay();
     // Adjust to Monday as the start of the week
     const diff = today.getDate() - day + (day === 0 ? -6 : 1);
-    startOfWeek.setDate(diff);
+    
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(diff + (weekOffset * 7));
     startOfWeek.setHours(0, 0, 0, 0);
 
     const weekData = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(startOfWeek);
-      d.setDate(startOfWeek.getDate() + i);
-      const nextD = new Date(d);
-      nextD.setDate(d.getDate() + 1);
+      const dayStart = new Date(startOfWeek);
+      dayStart.setDate(startOfWeek.getDate() + i);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayStart.getDate() + 1);
 
-      const dayBookings = bookings.filter(b => {
-        const bd = new Date(b.created_on);
-        return bd >= d && bd < nextD;
+      // Filter bookings for this day
+      const dayBookings = bookings.filter(booking => {
+        const bDate = new Date(booking.created_on);
+        return bDate >= dayStart && bDate < dayEnd;
       });
 
-      const dayRevenue = payments
-        .filter(p => {
-          const pd = new Date(p.updated_at);
-          return p.status === 'paid' && pd >= d && pd < nextD;
-        })
-        .reduce((sum, p) => sum + (parseFloat(p.amount?.toString().replace(/,/g, '') || "0") || 0), 0);
+      // Calculate revenue for this day
+      const dayRevenue = payments.reduce((sum, payment) => {
+        if (payment.status !== 'paid' || !payment.updated_at) return sum;
+        const pDate = new Date(payment.updated_at);
+        if (pDate >= dayStart && pDate < dayEnd) {
+          // Robust parsing of amount (handles ₹, commas, "onwards" etc)
+          const cleanAmount = payment.amount?.toString().replace(/[^\d.]/g, '') || "0";
+          return sum + (parseFloat(cleanAmount) || 0);
+        }
+        return sum;
+      }, 0);
 
       return {
-        dateLabel: d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
-        dayLabel: d.toLocaleDateString('en-IN', { weekday: 'short' }),
+        dateLabel: dayStart.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+        dayLabel: dayStart.toLocaleDateString('en-IN', { weekday: 'short' }),
         count: dayBookings.length,
         revenue: dayRevenue
       };
     });
 
-    const maxCount = Math.max(...weekData.map(d => d.count), 1);
-    const maxRevenue = Math.max(...weekData.map(d => d.revenue), 1);
+    // Find max values to scale charts, ensure at least 1 to avoid NaN/Infinity
+    const maxCount = Math.max(...weekData.map(d => d.count), 5);
+    const maxRevenue = Math.max(...weekData.map(d => d.revenue), 1000);
 
     return weekData.map(d => ({
       ...d,
-      countHeight: (d.count / maxCount) * 100,
-      revenueHeight: (d.revenue / maxRevenue) * 100
+      // Scale to 80% to provide vertical padding within SVG viewBox
+      countHeight: (d.count / maxCount) * 80,
+      revenueHeight: (d.revenue / maxRevenue) * 80
     }));
-  }, [bookings, payments]);
+  }, [bookings, payments, weekOffset]);
 
   const customerData = useMemo(() => {
     const customers: Record<string, any> = {};
@@ -538,6 +683,17 @@ export default function AdminPage() {
       (c.email && c.email.toLowerCase().includes(lower))
     );
   }, [customerData, customerSearchTerm]);
+
+  const filteredStaff = useMemo(() => {
+    if (!staffSearchTerm) return staff;
+    const lower = staffSearchTerm.toLowerCase();
+    return staff.filter((s: any) => 
+      s.name.toLowerCase().includes(lower) || 
+      (s.role && s.role.toLowerCase().includes(lower)) ||
+      (s.phone && s.phone.includes(lower)) ||
+      (s.email && s.email.toLowerCase().includes(lower))
+    );
+  }, [staff, staffSearchTerm]);
 
   const filteredBookings = useMemo(() => {
     let currentBookings = bookings;
@@ -602,7 +758,7 @@ export default function AdminPage() {
     { id: "Appointments", label: "Appointments", icon: CalendarCheck },
     { id: "Customers", label: "Customers", icon: Users },
     { id: "Services", label: "Services", icon: Scissors },
-    // { id: "Staff", label: "Staff", icon: UserCog },
+    { id: "Staff", label: "Staff", icon: UserCog },
     { id: "Billing", label: "Billing", icon: ReceiptIndianRupee },
     // { id: "Inventory", label: "Inventory", icon: PackageSearch },
     // { id: "Reports", label: "Reports", icon: BarChart3 },
@@ -684,7 +840,9 @@ export default function AdminPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-800">{activeTab}</h1>
-            <p className="text-sm text-gray-500 hidden md:block">Welcome back to Meena's Admin Panel</p>
+            <p className="text-sm text-gray-500 hidden md:block">
+              {tabDescriptions[activeTab as Section] || "Manage your salon's daily operations and growth."}
+            </p>
           </div>
         </div>
 
@@ -760,7 +918,11 @@ export default function AdminPage() {
                     <CalendarCheck size={18} /> Recent Bookings
                    </h3>
                    <div className="space-y-3">
-                     {bookings.slice(0, 5).map(booking => (
+                     {bookings
+                       .filter(b => (b.status || "Pending") === "Pending" || b.status === "Confirmed")
+                       .sort((a, b) => new Date(b.created_on).getTime() - new Date(a.created_on).getTime())
+                       .slice(0, 5)
+                       .map(booking => (
                        <div key={booking.id} className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
                          <div>
                            <p className="text-sm font-bold text-gray-800">{booking.name}</p>
@@ -771,23 +933,58 @@ export default function AdminPage() {
                          </span>
                        </div>
                      ))}
-                     {bookings.length === 0 && (
+                     {bookings.filter(b => (b.status || "Pending") === "Pending" || b.status === "Confirmed").length === 0 && (
                        <p className="text-center text-sm text-gray-400 py-4 italic">No recent bookings found</p>
                      )}
                    </div>
                 </div>
                 <div className="space-y-8">
+                  {/* Week Navigation Controls */}
+                  <div className="flex items-center justify-between bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 size={18} className="text-pink-600" />
+                      <span className="text-sm font-bold text-gray-800">Weekly Performance</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setWeekOffset(prev => prev - 1)}
+                        className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
+                        title="Previous Week"
+                      >
+                        <ChevronLeft size={18} />
+                      </button>
+                      <div className="text-[11px] font-bold text-gray-600 bg-gray-50 px-3 py-1 rounded-lg border min-w-[140px] text-center">
+                        {performanceData[0].dateLabel} - {performanceData[6].dateLabel}
+                      </div>
+                      <button 
+                        onClick={() => setWeekOffset(prev => prev + 1)}
+                        className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
+                        title="Next Week"
+                      >
+                        <ChevronRight size={18} />
+                      </button>
+                      {weekOffset !== 0 && (
+                        <button 
+                          onClick={() => setWeekOffset(0)}
+                          className="ml-2 text-[10px] font-bold text-pink-600 hover:underline border-l pl-3"
+                        >
+                          Current Week
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   {/* Booking Frequency Chart */}
                   <div className="bg-gray-50 p-6 rounded-2xl border">
                     <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                      <BarChart3 size={18} /> Booking Frequency
+                      Booking Frequency
                     </h3>
                     <div className="h-32 flex items-end justify-between gap-2 px-2">
                       {performanceData.map((day, i) => (
                         <div 
                           key={i} 
                           className="flex-1 bg-pink-100 hover:bg-pink-500 transition-all rounded-t-xl group relative cursor-pointer" 
-                          style={{ height: `${Math.max(day.countHeight, 5)}%` }}
+                          style={{ height: `${Math.max(day.countHeight, 8)}%` }}
                         >
                           <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
                             {day.count} {day.count === 1 ? 'Booking' : 'Bookings'}
@@ -820,14 +1017,14 @@ export default function AdminPage() {
                           </linearGradient>
                         </defs>
                         <path
-                          d={`${performanceData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${i * 100 + 50} ${100 - d.revenueHeight}`).join(' ')} L 650 100 L 50 100 Z`}
+                          d={`${performanceData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${i * 100 + 50} ${90 - d.revenueHeight}`).join(' ')} L 650 100 L 50 100 Z`}
                           fill="url(#revenueGradient)"
                         />
                         <path
-                          d={performanceData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${i * 100 + 50} ${100 - d.revenueHeight}`).join(' ')}
+                          d={performanceData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${i * 100 + 50} ${90 - d.revenueHeight}`).join(' ')}
                           fill="none"
                           stroke="#10b981"
-                          strokeWidth="4"
+                          strokeWidth="3"
                           strokeLinecap="round"
                           strokeLinejoin="round"
                         />
@@ -837,10 +1034,10 @@ export default function AdminPage() {
                         <div key={i} className="flex-1 flex flex-col items-center group relative cursor-pointer z-10 h-full">
                           <div 
                             className="w-3.5 h-3.5 bg-white border-[3px] border-emerald-500 rounded-full group-hover:bg-emerald-500 transition-colors shadow-sm"
-                            style={{ position: 'absolute', top: `${100 - day.revenueHeight}%`, transform: 'translateY(-50%)' }}
+                            style={{ position: 'absolute', top: `${90 - day.revenueHeight}%`, transform: 'translateY(-50%)' }}
                           />
                           <div className="absolute left-1/2 bg-gray-900 text-white text-[10px] font-bold px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap pointer-events-none z-20 shadow-xl"
-                               style={{ top: `${100 - day.revenueHeight}%`, transform: 'translate(-50%, -150%)' }}>
+                               style={{ top: `${90 - day.revenueHeight}%`, transform: 'translate(-50%, -150%)' }}>
                             ₹{day.revenue.toLocaleString('en-IN')}
                           </div>
                         </div>
@@ -912,6 +1109,7 @@ export default function AdminPage() {
                       <th className="px-4 py-3">Service</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Time</th>
+                      <th className="px-4 py-3">Staff</th>
                       <th className="px-4 py-3">Email</th>
                       <th className="px-4 py-3">Phone</th>
                       <th className="px-4 py-3 rounded-r-xl">Action</th>
@@ -942,27 +1140,58 @@ export default function AdminPage() {
                         <td className="px-4 py-4 text-gray-500">
                           {formatBookingDate(booking.preferred_time)}
                         </td>
+                        <td className="px-4 py-4 text-xs font-medium text-gray-600">
+                          {booking.staff?.name || <span className="text-gray-300 italic">Unassigned</span>}
+                        </td>
                         <td className="px-4 py-4 text-gray-500">{booking.email || "N/A"}</td>
                         <td className="px-4 py-4 text-gray-500">{booking.phone}</td>
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-3">
                             {editingId === booking.id ? (
-                              <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-200">
-                                <select
-                                  className="text-[10px] font-bold border rounded-lg px-2 py-1 focus:ring-2 focus:ring-pink-400 outline-none bg-white"
-                                  value={booking.status || "Pending"}
-                                  onChange={(e) => handleStatusChange(booking.id, e.target.value as BookingStatus)}
-                                >
-                                  {Object.keys(STATUS_CONFIG).map((status) => (
-                                    <option key={status} value={status}>{status}</option>
-                                  ))}
-                                </select>
-                                <button 
-                                  onClick={() => setEditingId(null)}
-                                  className="p-1 text-gray-400 hover:text-gray-600"
-                                >
-                                  <X size={14} />
-                                </button>
+                              <div className="flex flex-col gap-2 animate-in fade-in zoom-in duration-200 bg-gray-50 p-2 rounded-xl border border-gray-200 min-w-[180px]">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[8px] text-gray-400 uppercase font-bold">Status</span>
+                                  <select
+                                    className="text-[10px] font-bold border rounded-lg px-2 py-1 focus:ring-2 focus:ring-pink-400 outline-none bg-white flex-1"
+                                    value={editTempStatus || "Pending"}
+                                    onChange={(e) => setEditTempStatus(e.target.value as BookingStatus)}
+                                  >
+                                    {Object.keys(STATUS_CONFIG).map((status) => (
+                                      <option key={status} value={status}>{status}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[8px] text-gray-400 uppercase font-bold">Staff</span>
+                                  <select
+                                    className="text-[10px] font-bold border rounded-lg px-2 py-1 focus:ring-2 focus:ring-pink-400 outline-none bg-white flex-1"
+                                    value={editTempStaffId || ""}
+                                    onChange={(e) => setEditTempStaffId(e.target.value)}
+                                  >
+                                    <option value="">Unassigned</option>
+                                    {staff.map((s) => (
+                                      <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="flex gap-2 justify-end mt-1 border-t pt-2">
+                                  <button 
+                                    onClick={() => {
+                                      setEditingId(null);
+                                      setEditTempStatus(null);
+                                      setEditTempStaffId(null);
+                                    }}
+                                    className="text-[10px] font-bold text-gray-500 hover:text-gray-700 px-2 py-1"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button 
+                                    onClick={() => handleSaveEdit(booking.id)}
+                                    className="text-[10px] font-bold bg-pink-600 text-white rounded-lg px-3 py-1 hover:bg-pink-700 transition-colors shadow-sm"
+                                  >
+                                    Save
+                                  </button>
+                                </div>
                               </div>
                             ) : (
                               <>
@@ -970,7 +1199,16 @@ export default function AdminPage() {
                                   {STATUS_CONFIG[(booking.status as BookingStatus) || "Pending"]?.next.map(nextStatus => (
                                     <button
                                       key={nextStatus}
-                                      onClick={() => handleStatusChange(booking.id, nextStatus)}
+                                      onClick={() => {
+                                        if (nextStatus === "In Progress" && !booking.staff_id) {
+                                          // Trigger edit mode to ask for staff assignment
+                                          setEditingId(booking.id);
+                                          setEditTempStatus("In Progress");
+                                          setEditTempStaffId("");
+                                          return;
+                                        }
+                                        handleStatusChange(booking.id, nextStatus);
+                                      }}
                                       className={`px-2 py-1 rounded-md text-[10px] font-bold border transition-all ${
                                         nextStatus === 'Confirmed' ? 'border-blue-200 text-blue-600 hover:bg-blue-600 hover:text-white' :
                                         nextStatus === 'In Progress' ? 'border-purple-200 text-purple-600 hover:bg-purple-600 hover:text-white' :
@@ -990,7 +1228,11 @@ export default function AdminPage() {
                                 {booking.status !== "Completed" && (
                                   <div className="flex items-center ml-auto border-l pl-2 gap-1">
                                     <button 
-                                      onClick={() => setEditingId(booking.id)}
+                                      onClick={() => {
+                                        setEditingId(booking.id);
+                                        setEditTempStatus((booking.status as BookingStatus) || "Pending");
+                                        setEditTempStaffId(booking.staff_id || "");
+                                      }}
                                       className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors rounded-lg hover:bg-blue-50"
                                       title="Edit Status"
                                     >
@@ -1073,6 +1315,16 @@ export default function AdminPage() {
                             <option key={s.id} value={s.name}>{s.name}</option>
                           ))}
                         </select>
+                          <select
+                            className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white"
+                            value={customerForm.staff_id}
+                            onChange={(e) => setCustomerForm({ ...customerForm, staff_id: e.target.value })}
+                          >
+                            <option value="">Assign Staff (Optional)</option>
+                            {staff.map((s) => (
+                              <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+                            ))}
+                          </select>
                         <input
                           type="datetime-local"
                           className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white md:col-span-2"
@@ -1194,6 +1446,15 @@ export default function AdminPage() {
                             <option key={s.id} value={s.name}>{s.name}</option>
                           ))}
                         </select>
+                          <select
+                            name="staff_id"
+                            className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white"
+                          >
+                            <option value="">Assign Staff (Optional)</option>
+                            {staff.map((s) => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
                         <input
                           type="datetime-local"
                           className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white"
@@ -1271,6 +1532,101 @@ export default function AdminPage() {
               {filteredCustomers.length === 0 && !loading && (
                 <p className="text-center text-gray-400 py-10 italic">
                   {customerSearchTerm ? "No customers match your search." : "No customer data available."}
+                </p>
+              )}
+            </div>
+          )}
+
+          {activeTab === "Staff" && (
+            <div className="animate-in slide-in-from-right-2 duration-300">
+              <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
+                <input
+                  type="text"
+                  placeholder="Search team members..."
+                  value={staffSearchTerm}
+                  onChange={(e) => setStaffSearchTerm(e.target.value)}
+                  className="w-full md:w-1/3 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white"
+                />
+                <button 
+                  onClick={() => {
+                    setEditingStaffId(null);
+                    setStaffForm({ name: "", role: "", phone: "", email: "" });
+                    setIsStaffFormOpen(true);
+                  }}
+                  className="flex items-center gap-2 bg-pink-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md hover:bg-pink-700 transition-all ml-auto"
+                >
+                  <Plus size={18} />
+                  Add Staff
+                </button>
+              </div>
+
+              {isStaffFormOpen && (
+                <div className="mb-8 p-6 border border-pink-100 bg-pink-50 rounded-2xl animate-in fade-in duration-300">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-gray-800">{editingStaffId ? 'Edit' : 'Add New'} Staff Member</h3>
+                    <button onClick={() => setIsStaffFormOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+                  </div>
+                  <form onSubmit={handleStaffSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white" placeholder="Full Name" value={staffForm.name} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} required />
+                    <input className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white" placeholder="Role (e.g. Senior Beautician)" value={staffForm.role} onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })} required />
+                    <input className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white" placeholder="Phone" value={staffForm.phone} onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })} />
+                    <input className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white" placeholder="Email" type="email" value={staffForm.email} onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} />
+                    <div className="md:col-span-2 flex justify-end gap-3">
+                      <button type="button" onClick={() => setIsStaffFormOpen(false)} className="px-4 py-2 text-sm font-semibold text-gray-500 hover:bg-gray-100 rounded-xl">Cancel</button>
+                      <button type="submit" className="bg-pink-600 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-md hover:bg-pink-700">{editingStaffId ? 'Update' : 'Save'} Staff</button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-gray-600 font-bold">
+                    <tr>
+                      <th className="px-4 py-3 rounded-l-xl">Name</th>
+                      <th className="px-4 py-3">Role</th>
+                      <th className="px-4 py-3">Contact</th>
+                      <th className="px-4 py-3 rounded-r-xl">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {filteredStaff.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map((member) => (
+                      <tr key={member.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-4 font-bold text-gray-800">{member.name}</td>
+                        <td className="px-4 py-4">
+                          <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md text-[10px] font-bold uppercase">{member.role}</span>
+                        </td>
+                        <td className="px-4 py-4 text-xs text-gray-500">
+                          <p>{member.phone}</p>
+                          <p>{member.email}</p>
+                        </td>
+                        <td className="px-4 py-4 flex gap-2">
+                          <button 
+                            onClick={() => {
+                              setEditingStaffId(member.id);
+                              setStaffForm({ name: member.name, role: member.role || "", phone: member.phone || "", email: member.email || "" });
+                              setIsStaffFormOpen(true);
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors rounded-lg hover:bg-blue-50"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteStaff(member.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <PaginationControls total={Math.ceil(filteredStaff.length / ITEMS_PER_PAGE)} totalItems={filteredStaff.length} />
+              {filteredStaff.length === 0 && !loading && (
+                <p className="text-center text-gray-400 py-10 italic">
+                  {staffSearchTerm ? "No staff members match your search." : "No staff data available."}
                 </p>
               )}
             </div>
@@ -1472,7 +1828,7 @@ export default function AdminPage() {
             </div>
           )}
 
-          {!["Dashboard", "Appointments", "Customers", "Services", "Inventory", "Billing"].includes(activeTab) && (
+          {!["Dashboard", "Appointments", "Customers", "Services", "Staff", "Inventory", "Billing"].includes(activeTab) && (
             <div className="flex flex-col items-center justify-center h-[400px] text-gray-400">
               <Settings size={48} className="mb-4 opacity-20" />
               <p className="font-medium italic">{activeTab} module is coming soon...</p>

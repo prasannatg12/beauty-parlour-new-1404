@@ -14,7 +14,7 @@ const DemoBanner = () => {
       fontSize: "14px",
       zIndex: 9999
     }}>
-      Demo Version – Developed by Prasanna TG | Not for Public Use
+      Demo Version – Developed by FReshUIT | Not for Public Use
     </div>
   );
 };

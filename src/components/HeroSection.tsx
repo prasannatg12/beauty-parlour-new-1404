@@ -5,7 +5,7 @@ export default function HeroSection() {
   return (
     <section
       id="hero"
-      className="relative min-h-screen flex items-center justify-center text-white overflow-hidden"
+      className="relative min-h-[100dvh] flex flex-col items-center justify-center text-white overflow-hidden pt-24 pb-32 md:py-20"
       style={{
         background: "linear-gradient(135deg, #831843 100%, #9d174d 80%, #be185d 0%, #db2777 0%)",
       }}
@@ -35,7 +35,7 @@ export default function HeroSection() {
         <p className="text-pink-200 text-sm font-semibold tracking-[0.3em] uppercase mb-4">
           Welcome to
         </p>
-        <h1 className="text-5xl md:text-7xl font-bold mb-4 leading-tight">
+        <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold mb-4 leading-tight">
           {siteData.salon.name}
         </h1>
         <p className="text-xl md:text-2xl text-pink-100 font-light mb-3 italic">
@@ -60,7 +60,7 @@ export default function HeroSection() {
           </a>
         </div>
 
-        <div className="flex flex-wrap justify-center gap-8 md:gap-16">
+        <div className="flex flex-wrap justify-center gap-6 md:gap-16">
           {[
             { value: siteData.salon.happyCustomers, label: "Happy Customers" },
             { value: siteData.salon.yearsExperience, label: "Years Experience" },
