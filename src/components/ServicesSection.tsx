@@ -33,6 +33,7 @@ type BookingErrors = Partial<Record<keyof Omit<BookingForm, "email" | "notes">, 
 export default function ServicesSection() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [services, setServices] = useState<any[]>([]);
+  const [orgId, setOrgId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [booking, setBooking] = useState<BookingForm>({
     name: "",
@@ -46,17 +47,35 @@ export default function ServicesSection() {
   const [submissionState, setSubmissionState] = useState<"idle" | "submitting" | "success" | "error">("idle");
 
   useEffect(() => {
-    const fetchServices = async () => {
+    const initializeData = async () => {
+      // 1. Identify the organization for Meena's Beauty Parlour
+      const { data: orgData } = await supabase
+        .from("organization")
+        .select("id")
+        .eq("slug", "meenas-beauty")
+        // .eq("slug", "ananias-beauty-parlour")
+        // ananias-beauty-parlour
+        .single();
+// 4fa0d3a7-e010-4afd-9ed4-d74aae07abec
+// booking
+// services
+// staff
+// payments
+      if (!orgData) return;
+      setOrgId(orgData.id);
+
+      // 2. Fetch services for this specific organization
       const { data, error } = await supabase
         .from("service")
         .select("*")
+        .eq("org_id", orgData.id)
         .eq("isdeleted", false)
         .order("id", { ascending: true });
       
       if (data) setServices(data);
       setLoading(false);
     };
-    fetchServices();
+    initializeData();
   }, []);
 
   const openBookingDialog = (serviceName: string) => {
@@ -104,6 +123,7 @@ export default function ServicesSection() {
 
     const { error } = await supabase.from("booking").insert([
       {
+        org_id: orgId,
         name: booking.name.trim(),
         phone: booking.phone.trim(),
         email: booking.email.trim() || null,

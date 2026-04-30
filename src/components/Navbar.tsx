@@ -8,20 +8,34 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [salonName, setSalonName] = useState<string>("");
   const location = useLocation();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 50);
     window.addEventListener("scroll", onScroll);
 
+    const getSalon = async (userId: string) => {
+      const { data } = await supabase.from("organization").select("name").eq("id", userId).single();
+      if (data) setSalonName(data.name);
+    };
+
     // Check initial auth state
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsLoggedIn(!!session);
+      const loggedIn = !!session;
+      setIsLoggedIn(loggedIn);
+      if (session?.user) getSalon(session.user.id);
     });
 
     // Listen for auth changes (login/logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsLoggedIn(!!session);
+      const loggedIn = !!session;
+      setIsLoggedIn(loggedIn);
+      if (session?.user) {
+        getSalon(session.user.id);
+      } else {
+        setSalonName("");
+      }
     });
 
     return () => {
@@ -37,7 +51,6 @@ export default function Navbar() {
     { label: "Offers", href: "#offers" },
     { label: "Reviews", href: "#reviews" },
     { label: "Contact", href: "#contact" },
-    { label: "Admin", href: "/login" },
   ];
 
   const isLandingPage = location.pathname === "/";
@@ -51,112 +64,108 @@ export default function Navbar() {
       }`}
     >
       <div className="max-w-6xl mx-auto px-4 flex items-center justify-between">
-        <Link to="/" className="flex flex-col leading-tight">
-          <span
-            className={`font-bold text-lg tracking-wide ${
-              isSolid ? "text-pink-700" : "text-white"
-            }`}
-          >
-            {siteData.salon.name}
-          </span>
-          <span
-            className={`text-xs tracking-widest ${
-              isSolid ? "text-pink-400" : "text-pink-200"
-            }`}
-          >
-            THANJAVUR
-          </span>
-        </Link>
-
-        <div className="hidden md:flex items-center gap-6">
-          {!isLoggedIn && !isLoginPage && links.map((l) => (
-            l.href.startsWith("#") ? (
-              <a
-                key={l.href}
-                href={`/${l.href}`} // Prepend / to make it absolute to root
-                className={`text-sm font-medium transition-colors hover:text-pink-500 ${
-                  isSolid ? "text-gray-700" : "text-white"
-                }`}
-              >
-                {l.label}
-              </a>
-            ) : (
-              <Link
-                key={l.href}
-                to={l.href}
-                className={`text-sm font-medium transition-colors hover:text-pink-500 ${
-                  isSolid ? "text-gray-700" : "text-white"
-                }`}
-              >
-              {l.label === "Admin" ? <User size={20} title="Admin Portal" /> : l.label}
-              </Link>
-            )
-          ))}
-          {/* <a
-            href="#booking"
-            className="bg-pink-600 hover:bg-pink-700 text-white text-sm font-semibold px-5 py-2 rounded-full transition-colors"
-          >
-            Book Now
-          </a> */}
-        </div>
-
-        {!isLoggedIn && (
-          <button
-            className="md:hidden"
-            onClick={() => setMenuOpen(!menuOpen)}
-            aria-label="Toggle menu"
-          >
-            <div className="space-y-1.5">
-              <span
-                className={`block h-0.5 w-6 transition-colors ${
-                  isSolid ? "bg-gray-700" : "bg-white"
-                }`}
-              />
-              <span
-                className={`block h-0.5 w-6 transition-colors ${
-                  isSolid ? "bg-gray-700" : "bg-white"
-                }`}
-              />
-              <span
-                className={`block h-0.5 w-6 transition-colors ${
-                  isSolid ? "bg-gray-700" : "bg-white"
-                }`}
-              />
-            </div>
-          </button>
+        {!isLoginPage && (
+          <Link to="/" className="flex flex-col leading-tight">
+            <span
+              className={`font-bold text-lg tracking-wide ${
+                isSolid ? "text-pink-700" : "text-white"
+              }`}
+            >
+              {isLoggedIn && salonName ? salonName : siteData.salon.name}
+            </span>
+            <span
+              className={`text-xs tracking-widest ${
+                isSolid ? "text-pink-400" : "text-pink-200"
+              }`}
+            >
+              THANJAVUR
+            </span>
+          </Link>
         )}
+
+        <div className="flex items-center gap-4 md:gap-6">
+          {!isLoggedIn && isLandingPage && links.map((l) => (
+            <a
+              key={l.href}
+              href={l.href}
+              className={`hidden md:block text-sm font-medium transition-colors hover:text-pink-500 ${
+                isSolid ? "text-gray-700" : "text-white"
+              }`}
+            >
+              {l.label}
+            </a>
+          ))}
+
+          {isLoggedIn ? (
+            <Link
+              to="/profile"
+              className={`flex items-center gap-1 text-sm font-medium transition-colors hover:text-pink-500 ${
+                isSolid ? "text-gray-700" : "text-white"
+              }`}
+            >
+              <User size={20} title="Profile" />
+              Profile
+            </Link>
+          ) : !isLoginPage && (
+            <Link
+              to="/login"
+                className={`text-sm font-medium transition-colors hover:text-pink-500 ${
+                  isSolid ? "text-gray-700" : "text-white"
+                }`}
+              >
+              <User size={20} title="Admin Login" />
+              Admin
+            </Link>
+          )}
+
+          {!isLoggedIn && isLandingPage && (
+            <button
+              className="md:hidden"
+              onClick={() => setMenuOpen(!menuOpen)}
+              aria-label="Toggle menu"
+            >
+              <div className="space-y-1.5">
+                <span
+                  className={`block h-0.5 w-6 transition-colors ${
+                    isSolid ? "bg-gray-700" : "bg-white"
+                  }`}
+                />
+                <span
+                  className={`block h-0.5 w-6 transition-colors ${
+                    isSolid ? "bg-gray-700" : "bg-white"
+                  }`}
+                />
+                <span
+                  className={`block h-0.5 w-6 transition-colors ${
+                    isSolid ? "bg-gray-700" : "bg-white"
+                  }`}
+                />
+              </div>
+            </button>
+          )}
+        </div>
       </div>
 
-      {menuOpen && !isLoggedIn && !isLoginPage && (
-        <div className="md:hidden bg-white border-t shadow-lg px-4 py-4 space-y-3">
+      {/* Mobile Menu Dropdown */}
+      {menuOpen && !isLoggedIn && isLandingPage && (
+        <div className="md:hidden bg-white border-t shadow-lg px-4 py-4 space-y-3 animate-in slide-in-from-top duration-300">
           {links.map((l) => (
-            l.href.startsWith("#") ? (
-              <a
-                key={l.href}
-                    href={`/${l.href}`} // Prepend / to make it absolute to root
-                onClick={() => setMenuOpen(false)}
-                className="block text-gray-700 font-medium hover:text-pink-600 py-1"
-              >
-                {l.label}
-              </a>
-            ) : (
-              <Link
-                key={l.href}
-                to={l.href}
-                onClick={() => setMenuOpen(false)}
-                className="block text-gray-700 font-medium hover:text-pink-600 py-1"
-              >
-                {l.label === "Admin" ? <User size={20} className="inline" /> : l.label}
-              </Link>
-            )
+            <a
+              key={l.href}
+              href={l.href}
+              onClick={() => setMenuOpen(false)}
+              className="block text-gray-700 font-medium hover:text-pink-600 py-1 border-b border-gray-50 last:border-0"
+            >
+              {l.label}
+            </a>
           ))}
-          {/* <a
-            href="#booking"
+          <Link
+            to="/login"
             onClick={() => setMenuOpen(false)}
-            className="block bg-pink-600 text-white text-center font-semibold px-5 py-2 rounded-full"
+            className="block text-pink-600 font-bold py-1"
           >
-            Book Now
-          </a> */}
+            Admin Portal
+          </Link>
         </div>
       )}
     </nav>

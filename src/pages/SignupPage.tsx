@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import supabase from "../hooks/supabaseClient";
 
 export default function SignupPage() {
-  const [credentials, setCredentials] = useState({ fullName: "", email: "", password: "" });
+  const [credentials, setCredentials] = useState({ fullName: "", email: "", password: "", orgName: "" });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -14,6 +14,7 @@ export default function SignupPage() {
     setLoading(true);
     setError(null);
 
+    // 1. Register the user in Auth first to generate the unique UID
     const { data, error } = await supabase.auth.signUp({
       email: credentials.email.trim(),
       password: credentials.password.trim(),
@@ -31,6 +32,10 @@ export default function SignupPage() {
       if (error.status === 429 || error.message.includes("rate limit")) {
         message = "Email rate limit exceeded. Since this is a test, please create the user manually in the Supabase Dashboard or disable 'Confirm Email' in Auth Settings.";
       }
+
+      if (error.message.includes("Database error saving new user")) {
+        message = "A backend database error occurred. Please ensure the multi-tenant SQL triggers have been correctly applied in Supabase.";
+      }
       
       if (error.message.includes("Email address is invalid")) {
         message = "Please enter a valid email address.";
@@ -38,10 +43,34 @@ export default function SignupPage() {
       
       setError(message);
       setLoading(false);
-    } else {
+      return;
+    }
+
+    if (data?.user) {
+      // 2. Use the generated User UID as the Organization ID
+      const slug = credentials.orgName.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+      const { error: orgError } = await supabase
+        .from("organization")
+        .insert([{ 
+          id: data.user.id, 
+          name: credentials.orgName.trim(), 
+          slug 
+        }]);
+
+      if (orgError) {
+        let errorMessage = "Account created, but salon setup failed. Please contact support.";
+        // Check for unique constraint violation on the slug
+        if (orgError.code === '23505' && orgError.message.includes('organization_slug_key')) {
+          errorMessage = "The salon name you entered is already taken. Please choose a different name.";
+        }
+        setError(errorMessage);
+        setLoading(false);
+        return;
+      }
+
       if (data?.session) {
         navigate("/admin");
-      } else if (data?.user) {
+      } else {
         setSuccess(true);
         setLoading(false);
       }
@@ -73,6 +102,17 @@ export default function SignupPage() {
           </div>
         ) : (
           <form onSubmit={handleSignup} className="space-y-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Salon / Parlour Name</label>
+              <input
+                type="text"
+                required
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-400"
+                placeholder="e.g. Meena's Beauty Parlour"
+                value={credentials.orgName}
+                onChange={(e) => setCredentials({ ...credentials, orgName: e.target.value })}
+              />
+            </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Full Name</label>
               <input

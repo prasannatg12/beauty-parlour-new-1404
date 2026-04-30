@@ -4,6 +4,15 @@ This provides a comprehensive overview of the features, functionalities, and wor
 
 ---
 
+## 0. Multi-Tenant Architecture
+The platform is built on a scalable multi-tenant architecture, allowing multiple independent salon organizations to operate on the same infrastructure while maintaining complete data isolation.
+
+- **Organization Identity**: Every salon is identified by a unique `org_id` (slug and UUID).
+- **Data Isolation**: All operational data (appointments, services, staff, billing) is partitioned using the `org_id`.
+- **Tenant Context**: Users are associated with a specific organization via their account metadata, ensuring they only see and manage their own salon's data.
+
+---
+
 ## 1. Public Website Features
 A high-performance digital storefront designed to enhance brand visibility, build customer trust, and drive appointment growth through a seamless user journey.
 

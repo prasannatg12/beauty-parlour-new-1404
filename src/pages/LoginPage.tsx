@@ -70,14 +70,14 @@ export default function LoginPage() {
           >
             {loading ? "Signing In..." : "Sign In"}
           </button>
-          {/* <div className="text-center">
+          <div className="text-center">
             <p className="text-sm text-gray-500">
               Don't have an account?{" "}
               <Link to="/signup" className="text-pink-600 font-bold hover:underline">
                 Sign Up
               </Link>
             </p>
-          </div> */}
+          </div>
         </form>
       </div>
     </div>

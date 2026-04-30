@@ -121,6 +121,8 @@ export default function AdminPage() {
   const [staff, setStaff] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [isServiceFormOpen, setIsServiceFormOpen] = useState(false);
+  const [orgId, setOrgId] = useState<string | null>(null);
+  const [orgError, setOrgError] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [serviceForm, setServiceForm] = useState({ name: "", description: "", price: "", duration: "" });
   const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
@@ -166,13 +168,17 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  const fetchBookings = async () => {
+  const fetchBookings = async (forcedOrgId?: string) => {
+    const targetOrgId = forcedOrgId || orgId;
+    if (!targetOrgId) return;
+
     const { data, error } = await supabase
       .from("booking")
       .select(`
         *,
         staff:staff_id (name)
       `)
+      .eq("org_id", targetOrgId)
       .order("created_on", { ascending: false });
       
     if (error) {
@@ -182,7 +188,10 @@ export default function AdminPage() {
     }
   };
 
-  const fetchPayments = async () => {
+  const fetchPayments = async (forcedOrgId?: string) => {
+    const targetOrgId = forcedOrgId || orgId;
+    if (!targetOrgId) return;
+
     const { data, error } = await supabase
       .from("payment")
       .select(`
@@ -193,15 +202,20 @@ export default function AdminPage() {
           preferred_time
         )
       `)
+      .eq("org_id", targetOrgId)
       .order("created_at", { ascending: false });
     
     if (data) setPayments(data);
   };
 
-  const fetchServices = async () => {
+  const fetchServices = async (forcedOrgId?: string) => {
+    const targetOrgId = forcedOrgId || orgId;
+    if (!targetOrgId) return;
+
     const { data, error } = await supabase
       .from("service")
       .select("*")
+      .eq("org_id", targetOrgId)
       .eq("isdeleted", false)
       .order("id", { ascending: true });
     
@@ -209,10 +223,14 @@ export default function AdminPage() {
     setLoading(false);
   };
 
-  const fetchStaff = async () => {
+  const fetchStaff = async (forcedOrgId?: string) => {
+    const targetOrgId = forcedOrgId || orgId;
+    if (!targetOrgId) return;
+
     const { data, error } = await supabase
       .from("staff")
       .select("*")
+      .eq("org_id", targetOrgId)
       .eq("isdeleted", false)
       .order("name", { ascending: true });
     
@@ -226,20 +244,28 @@ export default function AdminPage() {
         navigate("/login");
         return;
       } else {
-        setLoading(true); // Start loading for the tab
+        // The User UID IS the Organization ID
+        const userOrgId = session.user.id;
+        if (!userOrgId) {
+          setOrgError("Your account is not associated with any organization. Data cannot be loaded.");
+          setLoading(false);
+          return;
+        }
+        setOrgId(userOrgId);
+        setLoading(true);
         try {
           if (activeTab === "Dashboard") {
-            await Promise.all([fetchBookings(), fetchPayments()]);
+            await Promise.all([fetchBookings(userOrgId), fetchPayments(userOrgId)]);
           } else if (activeTab === "Appointments") {
-            await Promise.all([fetchBookings(), fetchServices(), fetchPayments(), fetchStaff()]);
+            await Promise.all([fetchBookings(userOrgId), fetchServices(userOrgId), fetchPayments(userOrgId), fetchStaff(userOrgId)]);
           } else if (activeTab === "Customers") {
-            await Promise.all([fetchBookings(), fetchServices(), fetchPayments(), fetchStaff()]);
+            await Promise.all([fetchBookings(userOrgId), fetchServices(userOrgId), fetchPayments(userOrgId), fetchStaff(userOrgId)]);
           } else if (activeTab === "Services") {
-            await fetchServices();
+            await fetchServices(userOrgId);
           } else if (activeTab === "Staff") {
-            await fetchStaff();
+            await fetchStaff(userOrgId);
           } else if (activeTab === "Billing") {
-            await fetchPayments();
+            await fetchPayments(userOrgId);
           }
         } catch (error) {
           console.error("Error loading data for tab:", activeTab, error);
@@ -257,11 +283,18 @@ export default function AdminPage() {
 
   // Real-time subscription for booking updates
   useEffect(() => {
+    if (!orgId) return;
+
     const channel = supabase
       .channel('admin-updates')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'booking' },
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'booking',
+          filter: `org_id=eq.${orgId}`
+        },
         () => {
           fetchBookings();
         }
@@ -274,6 +307,8 @@ export default function AdminPage() {
   }, []);
 
   const handleStatusChange = async (bookingId: string, newStatus: BookingStatus) => {
+    if (!orgId) return;
+
     try {
       await updateBookingStatus(bookingId, newStatus);
       
@@ -289,13 +324,15 @@ export default function AdminPage() {
             .from("service")
             .select("price")
             .eq("name", booking.service)
+            .eq("org_id", orgId)
             .single();
 
           // Insert the payment record
           await supabase.from("payment").insert([{
             booking_id: bookingId,
             amount: serviceData?.price?.toString().replace(/[₹\s,]|onwards/g, '') || "0",
-            status: "pending"
+            status: "pending",
+            org_id: orgId
           }]);
           
           console.log("Automation: Payment record created for booking", bookingId);
@@ -315,11 +352,17 @@ export default function AdminPage() {
   };
 
   const handleSaveEdit = async (bookingId: string) => {
-    if (!editTempStatus) return;
+    if (!editTempStatus || !orgId) return;
     
     try {
       const booking = bookings.find(b => b.id === bookingId);
       if (!booking) return;
+
+      // Enforce: No appointment can be "In Progress" without an assigned staff member
+      if (editTempStatus === "In Progress" && !editTempStaffId) {
+        alert("Please assign a staff member before starting the appointment.");
+        return;
+      }
 
       const updates: any = {
         updated_on: new Date().toISOString()
@@ -339,7 +382,8 @@ export default function AdminPage() {
         const { error } = await supabase
           .from("booking")
           .update(updates)
-          .eq("id", bookingId);
+          .eq("id", bookingId)
+          .eq("org_id", orgId);
 
         if (error) throw error;
 
@@ -348,12 +392,14 @@ export default function AdminPage() {
             .from("service")
             .select("price")
             .eq("name", booking.service)
+            .eq("org_id", orgId)
             .single();
 
           await supabase.from("payment").insert([{
             booking_id: bookingId,
             amount: serviceData?.price?.toString().replace(/[₹\s,]|onwards/g, '') || "0",
-            status: "pending"
+            status: "pending",
+            org_id: orgId
           }]);
         }
       }
@@ -368,6 +414,8 @@ export default function AdminPage() {
   };
 
   const handleStaffAssign = async (bookingId: string, staffId: string | null) => {
+    if (!orgId) return;
+
     try {
       const { error } = await supabase
         .from("booking")
@@ -375,7 +423,8 @@ export default function AdminPage() {
           staff_id: staffId || null,
           updated_on: new Date().toISOString()
         })
-        .eq("id", bookingId);
+        .eq("id", bookingId)
+        .eq("org_id", orgId);
       
       if (error) throw error;
       fetchBookings(); // Refresh list to update the joined staff name display
@@ -385,6 +434,8 @@ export default function AdminPage() {
   };
 
   const handlePaymentStatusChange = async (paymentId: string, newStatus: string) => {
+    if (!orgId) return;
+
     try {
       const { error } = await supabase
         .from("payment")
@@ -392,7 +443,8 @@ export default function AdminPage() {
           status: newStatus,
           updated_at: new Date().toISOString()
         })
-        .eq("id", paymentId);
+        .eq("id", paymentId)
+        .eq("org_id", orgId);
       
       if (error) throw error;
       setPayments(prev => prev.map(p => p.id === paymentId ? { ...p, status: newStatus } : p));
@@ -402,18 +454,21 @@ export default function AdminPage() {
   };
 
   const handleServiceSubmit = async (e: React.FormEvent) => {
+    if (!orgId) return;
+
     e.preventDefault();
     try {
       if (editingServiceId) {
         const { error } = await supabase
           .from("service")
           .update(serviceForm)
-          .eq("id", editingServiceId);
+          .eq("id", editingServiceId)
+          .eq("org_id", orgId);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from("service")
-          .insert([serviceForm]);
+          .insert([{ ...serviceForm, org_id: orgId }]);
         if (error) throw error;
       }
       setIsServiceFormOpen(false);
@@ -426,12 +481,15 @@ export default function AdminPage() {
   };
 
   const handleDeleteService = async (id: number) => {
+    if (!orgId) return;
+
     if (!window.confirm("Are you sure you want to delete this service?")) return;
     try {
       const { error } = await supabase
         .from("service")
         .update({ isdeleted: true })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("org_id", orgId);
       if (error) throw error;
       fetchServices();
     } catch (err: any) {
@@ -440,6 +498,8 @@ export default function AdminPage() {
   };
 
   const handleCustomerSubmit = async (e: React.FormEvent) => {
+    if (!orgId) return;
+
     e.preventDefault();
     
     // 1. Check for duplicate phone number
@@ -464,6 +524,7 @@ export default function AdminPage() {
           created_on: now,
           updated_by: "Admin",
           updated_on: now,
+          org_id: orgId,
         },
       ]);
 
@@ -479,6 +540,8 @@ export default function AdminPage() {
   };
 
   const handleAddAppointmentSubmit = async (e: React.FormEvent) => {
+    if (!orgId) return;
+
     e.preventDefault();
     const selected = customerData.find(c => c.phone === selectedCustomerPhone);
     if (!selected) return;
@@ -499,6 +562,7 @@ export default function AdminPage() {
           created_on: now,
           updated_by: "Admin",
           updated_on: now,
+          org_id: orgId,
         },
       ]);
 
@@ -513,13 +577,18 @@ export default function AdminPage() {
   };
 
   const handleStaffSubmit = async (e: React.FormEvent) => {
+    if (!orgId) return;
+
     e.preventDefault();
     try {
       if (editingStaffId) {
-        const { error } = await supabase.from("staff").update(staffForm).eq("id", editingStaffId);
+        const { error } = await supabase.from("staff").update(staffForm).eq("id", editingStaffId).eq("org_id", orgId);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("staff").insert([staffForm]);
+        const { error } = await supabase.from("staff").insert([{
+          ...staffForm,
+          org_id: orgId
+        }]);
         if (error) throw error;
       }
       setIsStaffFormOpen(false);
@@ -532,9 +601,11 @@ export default function AdminPage() {
   };
 
   const handleDeleteStaff = async (id: string) => {
+    if (!orgId) return;
+
     if (!window.confirm("Are you sure you want to remove this staff member?")) return;
     try {
-      const { error } = await supabase.from("staff").update({ isdeleted: true }).eq("id", id);
+      const { error } = await supabase.from("staff").update({ isdeleted: true }).eq("id", id).eq("org_id", orgId);
       if (error) throw error;
       fetchStaff();
     } catch (err: any) {
@@ -846,6 +917,16 @@ export default function AdminPage() {
           </div>
         </div>
 
+        {orgError && (
+          <div className="mb-6 p-6 bg-amber-50 border border-amber-200 rounded-3xl flex items-center gap-4 text-amber-800 animate-in fade-in slide-in-from-top-2 duration-500">
+            <AlertCircle className="shrink-0" size={24} />
+            <div>
+              <p className="font-bold">Configuration Issue</p>
+              <p className="text-sm opacity-90">{orgError} Please run the mapping SQL script in Supabase.</p>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 min-h-[500px]">
           {activeTab === "Dashboard" && (
             <div className="space-y-8 animate-in fade-in duration-500">
@@ -1108,10 +1189,9 @@ export default function AdminPage() {
                       <th className="px-4 py-3 rounded-l-xl">Customer</th>
                       <th className="px-4 py-3">Service</th>
                       <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Time</th>
+                      <th className="px-4 py-3 min-w-[180px]">Time</th>
                       <th className="px-4 py-3">Staff</th>
-                      <th className="px-4 py-3">Email</th>
-                      <th className="px-4 py-3">Phone</th>
+                      <th className="px-4 py-3">Contact</th>
                       <th className="px-4 py-3 rounded-r-xl">Action</th>
                     </tr>
                   </thead>
@@ -1143,8 +1223,10 @@ export default function AdminPage() {
                         <td className="px-4 py-4 text-xs font-medium text-gray-600">
                           {booking.staff?.name || <span className="text-gray-300 italic">Unassigned</span>}
                         </td>
-                        <td className="px-4 py-4 text-gray-500">{booking.email || "N/A"}</td>
-                        <td className="px-4 py-4 text-gray-500">{booking.phone}</td>
+                        <td className="px-4 py-4">
+                          <p className="text-gray-700 font-bold">{booking.phone}</p>
+                          <p className="text-[10px] text-gray-400">{booking.email || "N/A"}</p>
+                        </td>
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-3">
                             {editingId === booking.id ? (

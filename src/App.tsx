@@ -17,6 +17,8 @@ import useTrackVisit from "./hooks/trackVisit.js";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import AdminPage from "./pages/AdminPage";
+import ProfilePage from "./pages/ProfilePage";
+import ProfileEditPage from "./pages/ProfileEditPage";
 
 export default function App() {
   useTrackVisit();
@@ -68,6 +70,8 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/profile/edit" element={<ProfileEditPage />} />
         </Routes>
 
         <div className="fixed bottom-0 left-0 w-1/2 z-[100]">
