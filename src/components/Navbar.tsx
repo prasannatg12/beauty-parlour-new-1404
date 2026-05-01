@@ -55,7 +55,8 @@ export default function Navbar() {
 
   const isLandingPage = location.pathname === "/";
   const isLoginPage = location.pathname === "/login";
-  const isSolid = !isLandingPage || scrolled;
+  const isWebsitePage = location.pathname === "/web";
+  const isSolid = (!isLandingPage && !isWebsitePage) || scrolled;
 
   return (
     <nav
@@ -64,14 +65,14 @@ export default function Navbar() {
       }`}
     >
       <div className="max-w-6xl mx-auto px-4 flex items-center justify-between">
-        {!isLoginPage && (
-          <Link to="/" className="flex flex-col leading-tight">
+        {(location.pathname.startsWith("/admin") || location.pathname.startsWith("/profile") || isWebsitePage) && (
+          <Link to={isWebsitePage ? "/web" : "/"} className="flex flex-col leading-tight">
             <span
               className={`font-bold text-lg tracking-wide ${
                 isSolid ? "text-pink-700" : "text-white"
               }`}
             >
-              {isLoggedIn && salonName ? salonName : siteData.salon.name}
+              {isWebsitePage ? "Meena's Beauty Parlour" : (salonName || siteData.salon.name)}
             </span>
             <span
               className={`text-xs tracking-widest ${
@@ -84,7 +85,7 @@ export default function Navbar() {
         )}
 
         <div className="flex items-center gap-4 md:gap-6">
-          {!isLoggedIn && isLandingPage && links.map((l) => (
+          {isWebsitePage && links.map((l) => (
             <a
               key={l.href}
               href={l.href}
@@ -96,7 +97,7 @@ export default function Navbar() {
             </a>
           ))}
 
-          {isLoggedIn ? (
+          {isLoggedIn && !isLandingPage && !isLoginPage ? (
             <Link
               to="/profile"
               className={`flex items-center gap-1 text-sm font-medium transition-colors hover:text-pink-500 ${
@@ -106,7 +107,7 @@ export default function Navbar() {
               <User size={20} title="Profile" />
               Profile
             </Link>
-          ) : !isLoginPage && (
+          ) : !isLoggedIn && !isLoginPage && !isLandingPage && (
             <Link
               to="/login"
                 className={`text-sm font-medium transition-colors hover:text-pink-500 ${
@@ -118,7 +119,7 @@ export default function Navbar() {
             </Link>
           )}
 
-          {!isLoggedIn && isLandingPage && (
+          {isWebsitePage && (
             <button
               className="md:hidden"
               onClick={() => setMenuOpen(!menuOpen)}
@@ -146,8 +147,8 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile Menu Dropdown */}
-      {menuOpen && !isLoggedIn && isLandingPage && (
+      {/* Mobile Menu Dropdown for Website */}
+      {menuOpen && isWebsitePage && (
         <div className="md:hidden bg-white border-t shadow-lg px-4 py-4 space-y-3 animate-in slide-in-from-top duration-300">
           {links.map((l) => (
             <a
@@ -159,13 +160,15 @@ export default function Navbar() {
               {l.label}
             </a>
           ))}
-          <Link
-            to="/login"
-            onClick={() => setMenuOpen(false)}
-            className="block text-pink-600 font-bold py-1"
-          >
-            Admin Portal
-          </Link>
+          {!isLoggedIn && (
+            <Link
+              to="/login"
+              onClick={() => setMenuOpen(false)}
+              className="block text-pink-600 font-bold py-1"
+            >
+              Admin Portal
+            </Link>
+          )}
         </div>
       )}
     </nav>

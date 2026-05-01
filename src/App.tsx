@@ -19,6 +19,7 @@ import SignupPage from "./pages/SignupPage";
 import AdminPage from "./pages/AdminPage";
 import ProfilePage from "./pages/ProfilePage";
 import ProfileEditPage from "./pages/ProfileEditPage";
+import NewLandingPage from "./pages/NewLandingPage";
 
 export default function App() {
   useTrackVisit();
@@ -41,24 +42,22 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const LandingPage = () => {
-    if (!checkingAuth && session) {
-      return <Navigate to="/admin" replace />;
-    }
+  const WebsitePage = () => (
+    <>
+      <HeroSection />
+      <AboutSection />
+      <ServicesSection />
+      <GallerySection />
+      <OffersSection />
+      <ReviewsSection />
+      <ContactSection />
+      <Footer />
+    </>
+  );
 
-    return (
-      <>
-        <HeroSection />
-        <AboutSection />
-        <ServicesSection />
-        <GallerySection />
-        <OffersSection />
-        <ReviewsSection />
-        <ContactSection />
-        <Footer />
-      </>
-    );
-  };
+  if (checkingAuth) {
+    return null; // Or a loading spinner if preferred
+  }
 
   return (
     <Router>
@@ -66,18 +65,20 @@ export default function App() {
         <Navbar />
         <Analytics />
         <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/profile/edit" element={<ProfileEditPage />} />
+          <Route path="/" element={session ? <Navigate to="/admin" replace /> : <NewLandingPage />} />
+          <Route path="/login" element={session ? <Navigate to="/admin" replace /> : <LoginPage />} />
+          <Route path="/signup" element={session ? <Navigate to="/admin" replace /> : <SignupPage />} />
+          <Route path="/web" element={<WebsitePage />} />
+
+          <Route path="/admin" element={session ? <AdminPage /> : <Navigate to="/login" replace />} />
+          <Route path="/profile" element={session ? <ProfilePage /> : <Navigate to="/login" replace />} />
+          <Route path="/profile/edit" element={session ? <ProfileEditPage /> : <Navigate to="/login" replace />} />
         </Routes>
 
         <div className="fixed bottom-0 left-0 w-1/2 z-[100]">
-          <DemoBanner />
+          {/* <DemoBanner /> */}
         </div>
-        <WhatsAppButton />
+        {/* <WhatsAppButton /> */}
       </div>
     </Router>
   );
