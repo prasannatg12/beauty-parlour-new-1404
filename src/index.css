@@ -13,3 +13,42 @@
     font-family: 'Inter', system-ui, sans-serif;
   }
 }
+
+/* Global styles for scrollable tables */
+
+/* Container to enable internal table scrolling */
+.table-container {
+  max-height: calc(100vh - 250px); /* Example height, adjust based on your page's header/footer and other fixed elements */
+  border: 1px solid #e5e7eb; /* Tailwind gray-200 */
+  border-radius: 0.5rem;
+  background-color: white;
+}
+
+/* Styles for content that sticks to the top of the scrollable table area */
+.sticky-table-top {
+  background-color: #f9fafb; /* Tailwind gray-50 or your theme color */
+  padding: 0.75rem 1rem; /* Example padding */
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Ensure the table takes up the container width */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* Keep the table header (thead) visible while scrolling through data */
+thead th {
+  position: sticky;
+  top: 0; /* Sticks to the top of the .table-scroll-area */
+  z-index: 10; /* Ensure it's above scrolling tbody content */
+  background-color: #f9fafb; /* Tailwind gray-50 or your theme color */
+  box-shadow: inset 0 -1px 0 #e5e7eb; /* Creates a bottom border that scrolls with the sticky header */
+}
+
+/* Styles for content that sticks to the bottom of the scrollable table area (e.g., pagination) */
+.sticky-table-bottom {
+  background-color: #f9fafb; /* Tailwind gray-50 or your theme color */
+  padding: 0.75rem 1rem; /* Example padding */
+  border-top: 1px solid #e5e7eb;
+}

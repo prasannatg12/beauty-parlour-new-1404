@@ -20,6 +20,9 @@ import AdminPage from "./pages/AdminPage";
 import ProfilePage from "./pages/ProfilePage";
 import ProfileEditPage from "./pages/ProfileEditPage";
 import NewLandingPage from "./pages/NewLandingPage";
+import SmartSchoolLogin from "./components/SmartSchool-Login";
+import SmartSchoolForgotPassword from "./components/SmartSchool-ForgotPassword";
+import SmartSchoolVerifyOTP from "./components/SmartSchool-VerifyOTP";
 
 export default function App() {
   useTrackVisit();
@@ -64,16 +67,21 @@ export default function App() {
       <div className="scroll-smooth">
         <Navbar />
         <Analytics />
-        <Routes>
+        <main className="flex-1 overflow-auto">
+          <Routes>
           <Route path="/" element={session ? <Navigate to="/admin" replace /> : <NewLandingPage />} />
           <Route path="/login" element={session ? <Navigate to="/admin" replace /> : <LoginPage />} />
+          {/* <Route path="/login" element={session ? <Navigate to="/admin" replace /> : <SmartSchoolLogin />} />
+          <Route path="/smartschool-forgotpassword" element={<SmartSchoolForgotPassword />} />
+          <Route path="/smartschool-verifyotp" element={<SmartSchoolVerifyOTP />} /> */}
           <Route path="/signup" element={session ? <Navigate to="/admin" replace /> : <SignupPage />} />
           <Route path="/web" element={<WebsitePage />} />
 
           <Route path="/admin" element={session ? <AdminPage /> : <Navigate to="/login" replace />} />
           <Route path="/profile" element={session ? <ProfilePage /> : <Navigate to="/login" replace />} />
           <Route path="/profile/edit" element={session ? <ProfileEditPage /> : <Navigate to="/login" replace />} />
-        </Routes>
+          </Routes>
+        </main>
 
         <div className="fixed bottom-0 left-0 w-1/2 z-[100]">
           {/* <DemoBanner /> */}

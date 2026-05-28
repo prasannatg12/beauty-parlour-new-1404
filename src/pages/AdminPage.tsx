@@ -4,6 +4,7 @@ import supabase from "../hooks/supabaseClient";
 import { 
   LayoutDashboard, 
   CalendarCheck, 
+  Calendar,
   Users, 
   Scissors, 
   UserCog, 
@@ -124,6 +125,9 @@ export default function AdminPage() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [orgError, setOrgError] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
+  const [bookingView, setBookingView] = useState<"grid" | "date">("date"); // Default to date view
+  const [selectedDateIndex, setSelectedDateIndex] = useState<number | null>(null);
+  const [upcomingGridSearchTerm, setUpcomingGridSearchTerm] = useState("");
   const [serviceForm, setServiceForm] = useState({ name: "", description: "", price: "", duration: "" });
   const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
   const [isStaffFormOpen, setIsStaffFormOpen] = useState(false);
@@ -146,6 +150,31 @@ export default function AdminPage() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("");
   const [customerSearchTerm, setCustomerSearchTerm] = useState("");
   const [staffSearchTerm, setStaffSearchTerm] = useState("");
+
+  const handleWeekDateSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedDate = new Date(e.target.value);
+    if (isNaN(selectedDate.getTime())) return;
+
+    const today = new Date();
+    const day = today.getDay();
+    const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+    const startOfCurrentWeek = new Date(today);
+    startOfCurrentWeek.setDate(diff);
+    startOfCurrentWeek.setHours(0, 0, 0, 0);
+
+    const selDay = selectedDate.getDay();
+    const selDiff = selectedDate.getDate() - selDay + (selDay === 0 ? -6 : 1);
+    const startOfSelectedWeek = new Date(selectedDate);
+    startOfSelectedWeek.setDate(selDiff);
+    startOfSelectedWeek.setHours(0, 0, 0, 0);
+
+    const diffInMs = startOfSelectedWeek.getTime() - startOfCurrentWeek.getTime();
+    const offset = Math.round(diffInMs / (7 * 24 * 60 * 60 * 1000));
+    
+    setWeekOffset(offset);
+    setSelectedDateIndex(null);
+  };
+
   const [isCustomerFormOpen, setIsCustomerFormOpen] = useState(false);
   const [customerForm, setCustomerForm] = useState({
     name: "",
@@ -280,6 +309,88 @@ export default function AdminPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [activeTab, searchTerm, customerSearchTerm, staffSearchTerm, selectedServiceFilter, selectedDateFilter, selectedStatusFilter, selectedCustomerPhone]);
+
+  const upcomingBookingsWeekData = useMemo(() => {
+    const today = new Date();
+    const day = today.getDay();
+    const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+    
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(diff + (weekOffset * 7));
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    return Array.from({ length: 7 }, (_, i) => {
+      const dayStart = new Date(startOfWeek);
+      dayStart.setDate(startOfWeek.getDate() + i);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayStart.getDate() + 1);
+
+      const dayBookings = bookings.filter(b => {
+        const bDate = new Date(b.preferred_time);
+        return !isNaN(bDate.getTime()) && 
+               bDate >= dayStart && 
+               bDate < dayEnd && 
+               ((b.status || "Pending") === "Pending" || b.status === "Confirmed");
+      });
+
+      return {
+        dayLabel: dayStart.toLocaleDateString('en-IN', { weekday: 'short' }),
+        dateLabel: dayStart.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+        isToday: dayStart.toDateString() === new Date().toDateString(),
+        bookings: dayBookings
+      };
+    });
+  }, [bookings, weekOffset]);
+
+  const customerData = useMemo(() => {
+    const customers: Record<string, any> = {};
+    
+    // Group bookings by phone number to create customer entries
+    bookings.forEach(b => {
+      const key = b.phone;
+      if (!customers[key]) {
+        customers[key] = {
+          name: b.name,
+          phone: b.phone,
+          email: b.email,
+          totalBookings: 0,
+          lastVisit: b.created_on,
+          history: [],
+          names: new Set<string>() // Use a Set to store unique names
+        };
+      }
+      customers[key].totalBookings += 1;
+      customers[key].history.push(b);
+      customers[key].names.add(b.name); // Add current booking's name to the set
+
+      if (new Date(b.created_on) > new Date(customers[key].lastVisit)) {
+        customers[key].lastVisit = b.created_on;
+        customers[key].name = b.name; // Keep most recent name
+      }
+    });
+
+    // Convert Set of names to Array and sort customers
+    return Object.values(customers).map(customer => ({
+      ...customer,
+      names: Array.from(customer.names) // Convert Set to Array for display
+    })).sort((a, b) => 
+      new Date(b.lastVisit).getTime() - new Date(a.lastVisit).getTime()
+    );
+  }, [bookings]);
+
+  // Effect to auto-select today's date in the upcoming appointments date view on Dashboard load
+  useEffect(() => {
+    if (activeTab === "Dashboard" && bookingView === "date" && bookings.length > 0) {
+      const todayIndex = upcomingBookingsWeekData.findIndex(dayData => dayData.isToday && dayData.bookings.length > 0);
+      if (todayIndex !== -1) {
+        setSelectedDateIndex(todayIndex);
+      } else {
+        setSelectedDateIndex(0); // Select the first day if today has no appointments or is not in the current week
+      }
+    } else if (activeTab === "Dashboard" && bookingView === "grid") {
+      setSelectedDateIndex(null); // Clear selection if switching to grid view
+    }
+  }, [activeTab, bookings, bookingView, upcomingBookingsWeekData]);
 
   // Real-time subscription for booking updates
   useEffect(() => {
@@ -709,41 +820,107 @@ export default function AdminPage() {
     }));
   }, [bookings, payments, weekOffset]);
 
-  const customerData = useMemo(() => {
-    const customers: Record<string, any> = {};
+  // const upcomingBookingsWeekData = useMemo(() => {
+  //   const today = new Date();
+  //   const day = today.getDay();
+  //   const diff = today.getDate() - day + (day === 0 ? -6 : 1);
     
-    // Group bookings by phone number to create customer entries
-    bookings.forEach(b => {
-      const key = b.phone;
-      if (!customers[key]) {
-        customers[key] = {
-          name: b.name,
-          phone: b.phone,
-          email: b.email,
-          totalBookings: 0,
-          lastVisit: b.created_on,
-          history: [],
-          names: new Set<string>() // Use a Set to store unique names
-        };
-      }
-      customers[key].totalBookings += 1;
-      customers[key].history.push(b);
-      customers[key].names.add(b.name); // Add current booking's name to the set
+  //   const startOfWeek = new Date(today);
+  //   startOfWeek.setDate(diff + (weekOffset * 7));
+  //   startOfWeek.setHours(0, 0, 0, 0);
 
-      if (new Date(b.created_on) > new Date(customers[key].lastVisit)) {
-        customers[key].lastVisit = b.created_on;
-        customers[key].name = b.name; // Keep most recent name
-      }
-    });
+  //   return Array.from({ length: 7 }, (_, i) => {
+  //     const dayStart = new Date(startOfWeek);
+  //     dayStart.setDate(startOfWeek.getDate() + i);
+  //     const dayEnd = new Date(dayStart);
+  //     dayEnd.setDate(dayStart.getDate() + 1);
 
-    // Convert Set of names to Array and sort customers
-    return Object.values(customers).map(customer => ({
-      ...customer,
-      names: Array.from(customer.names) // Convert Set to Array for display
-    })).sort((a, b) => 
-      new Date(b.lastVisit).getTime() - new Date(a.lastVisit).getTime()
-    );
-  }, [bookings]);
+  //     const dayBookings = bookings.filter(b => {
+  //       const bDate = new Date(b.preferred_time);
+  //       return !isNaN(bDate.getTime()) && 
+  //              bDate >= dayStart && 
+  //              bDate < dayEnd && 
+  //              ((b.status || "Pending") === "Pending" || b.status === "Confirmed");
+  //     });
+
+  //     return {
+  //       dayLabel: dayStart.toLocaleDateString('en-IN', { weekday: 'short' }),
+  //       dateLabel: dayStart.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+  //       isToday: dayStart.toDateString() === new Date().toDateString(),
+  //       bookings: dayBookings
+  //     };
+  //   });
+  // }, [bookings, weekOffset]);
+
+  // const upcomingBookingsWeekData = useMemo(() => {
+  //   const today = new Date();
+  //   const day = today.getDay();
+  //   const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+    
+  //   const startOfWeek = new Date(today);
+  //   startOfWeek.setDate(diff + (weekOffset * 7));
+  //   startOfWeek.setHours(0, 0, 0, 0);
+
+  //   return Array.from({ length: 7 }, (_, i) => {
+  //     const dayStart = new Date(startOfWeek);
+  //     dayStart.setDate(startOfWeek.getDate() + i);
+  //     const dayEnd = new Date(dayStart);
+  //     dayEnd.setDate(dayStart.getDate() + 1);
+
+  //     const dayBookings = bookings.filter(b => {
+  //       const bDate = new Date(b.preferred_time);
+  //       return !isNaN(bDate.getTime()) && 
+  //              bDate >= dayStart && 
+  //              bDate < dayEnd && 
+  //              ((b.status || "Pending") === "Pending" || b.status === "Confirmed");
+  //     });
+
+  //     return {
+  //       dayLabel: dayStart.toLocaleDateString('en-IN', { weekday: 'short' }),
+  //       dateLabel: dayStart.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+  //       isToday: dayStart.toDateString() === new Date().toDateString(),
+  //       bookings: dayBookings
+  //     };
+  //   });
+  // }, [bookings, weekOffset]);
+
+
+
+  // const customerData = useMemo(() => {
+  //   const customers: Record<string, any> = {};
+    
+  //   // Group bookings by phone number to create customer entries
+  //   bookings.forEach(b => {
+  //     const key = b.phone;
+  //     if (!customers[key]) {
+  //       customers[key] = {
+  //         name: b.name,
+  //         phone: b.phone,
+  //         email: b.email,
+  //         totalBookings: 0,
+  //         lastVisit: b.created_on,
+  //         history: [],
+  //         names: new Set<string>() // Use a Set to store unique names
+  //       };
+  //     }
+  //     customers[key].totalBookings += 1;
+  //     customers[key].history.push(b);
+  //     customers[key].names.add(b.name); // Add current booking's name to the set
+
+  //     if (new Date(b.created_on) > new Date(customers[key].lastVisit)) {
+  //       customers[key].lastVisit = b.created_on;
+  //       customers[key].name = b.name; // Keep most recent name
+  //     }
+  //   });
+
+  //   // Convert Set of names to Array and sort customers
+  //   return Object.values(customers).map(customer => ({
+  //     ...customer,
+  //     names: Array.from(customer.names) // Convert Set to Array for display
+  //   })).sort((a, b) => 
+  //     new Date(b.lastVisit).getTime() - new Date(a.lastVisit).getTime()
+  //   );
+  // }, [bookings]);
 
   const filteredCustomers = useMemo(() => {
     if (!customerSearchTerm) return customerData;
@@ -795,31 +972,32 @@ export default function AdminPage() {
   }, [bookings, searchTerm, selectedServiceFilter, selectedDateFilter, selectedStatusFilter]);
 
   const PaginationControls = ({ total, totalItems }: { total: number, totalItems: number }) => {
-    if (total <= 1) return null;
     const from = ((currentPage - 1) * ITEMS_PER_PAGE) + 1;
     const to = Math.min(currentPage * ITEMS_PER_PAGE, totalItems);
     
     return (
-      <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
+      <div className="flex items-center justify-between">
         <p className="text-xs text-gray-500">
           Showing <span className="font-bold text-gray-800">{from}</span> to <span className="font-bold text-gray-800">{to}</span> of <span className="font-bold text-gray-800">{totalItems}</span>
         </p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-            disabled={currentPage === 1}
-            className="p-2 border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-30 transition-all"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <button
-            onClick={() => setCurrentPage(prev => Math.min(total, prev + 1))}
-            disabled={currentPage === total}
-            className="p-2 border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-30 transition-all"
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
+        {total > 1 && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="p-2 border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-30 transition-all"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(total, prev + 1))}
+              disabled={currentPage === total}
+              className="p-2 border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-30 transition-all"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -929,11 +1107,11 @@ export default function AdminPage() {
 
         <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 min-h-[500px]">
           {activeTab === "Dashboard" && (
-            <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start animate-in fade-in duration-500">
               <div className="space-y-10">
                 <div>
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 px-1">Overall Bookings</h3>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
                     {[
                       { label: "Total Bookings", value: kpiData.totalAppointments, color: "bg-blue-50 text-blue-600", icon: CalendarCheck },
                       { label: "Current Week", value: kpiData.currentWeekAppointments, color: "bg-purple-50 text-purple-600", icon: CalendarCheck },
@@ -949,7 +1127,7 @@ export default function AdminPage() {
 
                 <div>
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 px-1">Status Wise Bookings</h3>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                  <div className="grid grid-cols-2 gap-4 md:gap-6">
                     {[
                       { label: "Pending", value: kpiData.pendingAppointments, color: "bg-yellow-50 text-yellow-600", icon: CalendarCheck },
                       { label: "Confirmed", value: kpiData.confirmedAppointments, color: "bg-blue-50 text-blue-600", icon: CalendarCheck },
@@ -967,7 +1145,7 @@ export default function AdminPage() {
 
                 <div>
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 px-1">Financial Summary</h3>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
                     {[
                       { label: "Overall Revenue", value: `₹${kpiData.totalRevenue.toLocaleString('en-IN')}`, color: "bg-emerald-50 text-emerald-600", icon: ReceiptIndianRupee },
                       { 
@@ -992,32 +1170,178 @@ export default function AdminPage() {
                   </div>
                 </div>
               </div>
-
-              <div className="grid lg:grid-cols-2 gap-8">
+              
+              <div className="space-y-8">
                 <div className="bg-gray-50 p-6 rounded-2xl border">
-                   <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <CalendarCheck size={18} /> Recent Bookings
-                   </h3>
-                   <div className="space-y-3">
-                     {bookings
-                       .filter(b => (b.status || "Pending") === "Pending" || b.status === "Confirmed")
-                       .sort((a, b) => new Date(b.created_on).getTime() - new Date(a.created_on).getTime())
-                       .slice(0, 5)
-                       .map(booking => (
-                       <div key={booking.id} className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
-                         <div>
-                           <p className="text-sm font-bold text-gray-800">{booking.name}</p>
-                           <p className="text-[10px] text-gray-500">{booking.service} • {booking.preferred_time}</p>
-                         </div>
-                         <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase ${STATUS_CONFIG[(booking.status as BookingStatus) || 'Pending']?.color || 'bg-gray-100'}`}>
-                           {booking.status || 'Pending'}
-                         </span>
-                       </div>
-                     ))}
-                     {bookings.filter(b => (b.status || "Pending") === "Pending" || b.status === "Confirmed").length === 0 && (
-                       <p className="text-center text-sm text-gray-400 py-4 italic">No recent bookings found</p>
-                     )}
-                   </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                      <CalendarCheck size={18} /> Upcoming appointments
+                    </h3>
+                    <div className="flex bg-white p-1 rounded-lg border border-gray-100 shadow-sm self-start text-xs" role="tablist">
+                      <button 
+                        onClick={() => {
+                          setBookingView("date");
+                          setSelectedDateIndex(null);
+                          setUpcomingGridSearchTerm(""); // Clear search term when switching to date view
+                        }}
+                        className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${bookingView === "date" ? "bg-pink-50 text-pink-600 shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
+                      >
+                        Date View
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setBookingView("grid");
+                          setSelectedDateIndex(null);
+                          setUpcomingGridSearchTerm(""); // Clear search term when switching to grid view
+                        }}
+                        className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${bookingView === "grid" ? "bg-pink-50 text-pink-600 shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
+                      >
+                        Grid View
+                      </button>
+                    </div>
+                  </div>
+
+                  {bookingView === "grid" ? (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="Search by customer name..."
+                        value={upcomingGridSearchTerm}
+                        onChange={(e) => setUpcomingGridSearchTerm(e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white mb-4"
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-3 max-h-[28rem] overflow-y-auto pr-2">
+                      {bookings
+                        .filter(b => (b.status || "Pending") === "Pending" || b.status === "Confirmed")
+                        .filter(b => b.name.toLowerCase().includes(upcomingGridSearchTerm.toLowerCase()))
+                        .sort((a, b) => new Date(b.created_on).getTime() - new Date(a.created_on).getTime())
+                        .map(booking => (
+                        <div key={booking.id} className="flex flex-col bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:border-pink-200 transition-all min-w-0 gap-1">
+                          <p className="text-sm font-bold text-gray-800 truncate">{booking.name}</p>
+                          <p className="text-[11px] font-medium text-pink-600 truncate">{booking.service}</p>
+                          <p className="text-[10px] text-gray-500 mb-1">{formatBookingDate(booking.preferred_time)}</p>
+                          <div className="flex">
+                            <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase ${STATUS_CONFIG[(booking.status as BookingStatus) || 'Pending']?.color || 'bg-gray-100'}`}>
+                              {booking.status || 'Pending'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                      {bookings.filter(b => (b.status || "Pending") === "Pending" || b.status === "Confirmed").filter(b => b.name.toLowerCase().includes(upcomingGridSearchTerm.toLowerCase())).length === 0 && (
+                        <p className="col-span-full text-center text-sm text-gray-400 py-10 italic border-2 border-dashed border-gray-100 rounded-2xl">No upcoming appointments found</p>
+                      )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => {
+                              setWeekOffset(prev => prev - 1);
+                              setSelectedDateIndex(null);
+                            }} 
+                            className="p-1 hover:bg-white rounded border border-gray-100 shadow-sm transition-all"
+                          >
+                            <ChevronLeft size={14} />
+                          </button>
+                          <div className="relative">
+                            <button 
+                              onClick={() => (document.getElementById('dash-week-picker') as HTMLInputElement)?.showPicker()}
+                              className="text-[10px] font-bold text-gray-600 bg-white px-2 py-1 rounded border border-gray-100 min-w-[100px] text-center hover:border-pink-300 hover:text-pink-600 transition-all flex items-center gap-1.5 group"
+                            >
+                              <Calendar size={12} className="text-gray-400 group-hover:text-pink-500" />
+                              {upcomingBookingsWeekData[0].dateLabel} - {upcomingBookingsWeekData[6].dateLabel}
+                            </button>
+                            <input 
+                              id="dash-week-picker"
+                              type="date"
+                              className="absolute opacity-0 pointer-events-none w-0 h-0"
+                              onChange={handleWeekDateSelect}
+                            />
+                          </div>
+                          <button 
+                            onClick={() => {
+                              setWeekOffset(prev => prev + 1);
+                              setSelectedDateIndex(null);
+                            }} 
+                            className="p-1 hover:bg-white rounded border border-gray-100 shadow-sm transition-all"
+                          >
+                            <ChevronRight size={14} />
+                          </button>
+                        </div>
+                        {weekOffset !== 0 && (
+                          <button 
+                            onClick={() => {
+                              setWeekOffset(0);
+                              setSelectedDateIndex(null);
+                            }} 
+                            className="text-[10px] font-bold text-pink-600 hover:underline"
+                          >
+                            Today
+                          </button>
+                        )}
+                      </div>
+                      
+                      <div className="grid grid-cols-7 gap-1">
+                        {upcomingBookingsWeekData.map((day, idx) => (
+                          <div 
+                            key={idx} 
+                            onClick={() => setSelectedDateIndex(idx === selectedDateIndex ? null : idx)}
+                            className={`flex flex-col items-center p-2 rounded-xl border transition-all cursor-pointer hover:border-pink-300 ${day.isToday ? 'bg-pink-50 border-pink-200 shadow-sm' : 'bg-white border-gray-100'} ${selectedDateIndex === idx ? 'ring-2 ring-pink-500 border-transparent shadow-md' : ''}`}
+                          >
+                            <span className={`text-[8px] font-bold uppercase tracking-tighter ${day.isToday ? 'text-pink-600' : 'text-gray-400'}`}>{day.dayLabel}</span>
+                            <span className={`text-xs font-black my-1 ${day.isToday ? 'text-pink-700' : 'text-gray-700'}`}>{day.dateLabel.split(' ')[0]}</span>
+                            <div className="mt-1 flex flex-col gap-1 w-full">
+                              {day.bookings.length > 0 ? (
+                                <>
+                                  {/* {day.bookings.slice(0, 1).map(b => (
+                                    <div key={b.id} className="w-full h-1 bg-pink-400 rounded-full" title={`${b.name}: ${b.service}`} />
+                                  ))}
+                                  {day.bookings.length > 1 && <div className="text-[8px] font-bold text-center text-pink-500">+{day.bookings.length - 1}</div>} */}
+                                  <div className="text-[9px] font-bold text-center text-gray-800 mt-1">{day.bookings.length}</div>
+                                </>
+                              ) : (
+                                <div className="text-[9px] text-gray-300 text-center font-medium mt-1">0</div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {selectedDateIndex !== null && (
+                        <div className="mt-4 p-4 bg-white rounded-2xl border border-pink-100 shadow-sm animate-in fade-in slide-in-from-top-2">
+                           <div className="flex justify-between items-center mb-3">
+                             <h4 className="text-[11px] font-bold text-gray-800 uppercase tracking-wider">
+                               Appointments for {upcomingBookingsWeekData[selectedDateIndex].dayLabel}, {upcomingBookingsWeekData[selectedDateIndex].dateLabel}
+                             </h4>
+                             <button onClick={() => setSelectedDateIndex(null)} className="text-gray-400 hover:text-gray-600">
+                               <X size={14} />
+                             </button>
+                           </div>
+                           <div className="space-y-2">
+                             {upcomingBookingsWeekData[selectedDateIndex].bookings.length > 0 ? (
+                               upcomingBookingsWeekData[selectedDateIndex].bookings.map(booking => (
+                                 <div key={booking.id} className="flex items-center justify-between p-2 rounded-xl border border-gray-50 bg-gray-50/50">
+                                   <div>
+                                     <p className="text-xs font-bold text-gray-800">{booking.name}</p>
+                                     <p className="text-[10px] text-gray-500">{booking.service} • {formatBookingDate(booking.preferred_time)}</p>
+                                   </div>
+                                   <span className={`px-2 py-0.5 rounded-md text-[8px] font-bold uppercase ${STATUS_CONFIG[(booking.status as BookingStatus) || 'Pending']?.color || 'bg-gray-100'}`}>
+                                     {booking.status || 'Pending'}
+                                   </span>
+                                 </div>
+                               ))
+                             ) : (
+                               <p className="text-center text-[10px] text-gray-400 py-4 italic">No appointments scheduled for this day</p>
+                             )}
+                           </div>
+                        </div>
+                      )}
+
+                      <p className="text-[10px] text-center text-gray-400 italic">Showing Pending & Confirmed appointments for the week</p>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-8">
                   {/* Week Navigation Controls */}
@@ -1182,9 +1506,10 @@ export default function AdminPage() {
                   )}
                 </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-gray-600 font-bold sticky top-0">
+              <div className="border border-gray-100 rounded-2xl overflow-hidden flex flex-col max-h-[calc(100vh-320px)] bg-white shadow-sm">
+                <div className="overflow-auto flex-1">
+                  <table className="w-full text-left text-sm border-separate border-spacing-0">
+                    <thead className="bg-gray-50 text-gray-600 font-bold sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-3 rounded-l-xl">Customer</th>
                       <th className="px-4 py-3">Service</th>
@@ -1331,7 +1656,10 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
-              <PaginationControls total={Math.ceil(filteredBookings.length / ITEMS_PER_PAGE)} totalItems={filteredBookings.length} />
+                <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 z-20">
+                  <PaginationControls total={Math.ceil(filteredBookings.length / ITEMS_PER_PAGE)} totalItems={filteredBookings.length} />
+                </div>
+              </div>
             </div>
           )}
 
@@ -1433,9 +1761,10 @@ export default function AdminPage() {
                     </div>
                   )}
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-gray-50 text-gray-600 font-bold sticky top-0">
+                  <div className="border border-gray-100 rounded-2xl overflow-hidden flex flex-col max-h-[calc(100vh-320px)] bg-white shadow-sm">
+                    <div className="overflow-auto flex-1">
+                      <table className="w-full text-left text-sm border-separate border-spacing-0">
+                        <thead className="bg-gray-50 text-gray-600 font-bold sticky top-0 z-10">
                         <tr>
                           <th className="px-4 py-3 rounded-l-xl">Customer Name</th>
                           <th className="px-4 py-3">Contact Info</th>
@@ -1485,7 +1814,10 @@ export default function AdminPage() {
                       </tbody>
                     </table>
                   </div>
-                  <PaginationControls total={Math.ceil(filteredCustomers.length / ITEMS_PER_PAGE)} totalItems={filteredCustomers.length} />
+                    <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 z-20">
+                      <PaginationControls total={Math.ceil(filteredCustomers.length / ITEMS_PER_PAGE)} totalItems={filteredCustomers.length} />
+                    </div>
+                  </div>
                 </>
               ) : (
                 <div className="animate-in fade-in duration-300">
@@ -1579,8 +1911,9 @@ export default function AdminPage() {
                         </div>
                         
                         <h4 className="font-bold text-gray-700 uppercase text-xs tracking-widest px-1">Booking History</h4>
-                        <div className="space-y-3">
-                          {selected?.history.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map((booking: any) => (
+                        <div className="border border-gray-100 rounded-2xl overflow-hidden flex flex-col max-h-[450px] bg-white shadow-sm">
+                          <div className="overflow-auto flex-1 p-4 space-y-3">
+                            {selected?.history.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map((booking: any) => (
                             <div key={booking.id} className="flex items-center justify-between bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                               <div>
                                 <div className="flex items-center gap-2">
@@ -1604,8 +1937,11 @@ export default function AdminPage() {
                               </span>
                             </div>
                           ))}
+                          </div>
+                          <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 z-20">
+                            <PaginationControls total={Math.ceil((selected?.history?.length || 0) / ITEMS_PER_PAGE)} totalItems={selected?.history?.length || 0} />
+                          </div>
                         </div>
-                        <PaginationControls total={Math.ceil((selected?.history?.length || 0) / ITEMS_PER_PAGE)} totalItems={selected?.history?.length || 0} />
                       </div>
                     );
                   })()}
@@ -1661,9 +1997,10 @@ export default function AdminPage() {
                 </div>
               )}
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-gray-600 font-bold">
+              <div className="border border-gray-100 rounded-2xl overflow-hidden flex flex-col max-h-[calc(100vh-320px)] bg-white shadow-sm">
+                <div className="overflow-auto flex-1">
+                  <table className="w-full text-left text-sm border-separate border-spacing-0">
+                    <thead className="bg-gray-50 text-gray-600 font-bold sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-3 rounded-l-xl">Name</th>
                       <th className="px-4 py-3">Role</th>
@@ -1705,7 +2042,10 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
-              <PaginationControls total={Math.ceil(filteredStaff.length / ITEMS_PER_PAGE)} totalItems={filteredStaff.length} />
+                <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 z-20">
+                  <PaginationControls total={Math.ceil(filteredStaff.length / ITEMS_PER_PAGE)} totalItems={filteredStaff.length} />
+                </div>
+              </div>
               {filteredStaff.length === 0 && !loading && (
                 <p className="text-center text-gray-400 py-10 italic">
                   {staffSearchTerm ? "No staff members match your search." : "No staff data available."}
@@ -1787,9 +2127,10 @@ export default function AdminPage() {
                 </div>
               )}
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-gray-600 font-bold sticky top-0">
+              <div className="border border-gray-100 rounded-2xl overflow-hidden flex flex-col max-h-[calc(100vh-320px)] bg-white shadow-sm">
+                <div className="overflow-auto flex-1">
+                  <table className="w-full text-left text-sm border-separate border-spacing-0">
+                    <thead className="bg-gray-50 text-gray-600 font-bold sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-3 rounded-l-xl">Service Name</th>
                       <th className="px-4 py-3">Description</th>
@@ -1833,7 +2174,10 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
-              <PaginationControls total={Math.ceil(services.length / ITEMS_PER_PAGE)} totalItems={services.length} />
+                <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 z-20">
+                  <PaginationControls total={Math.ceil(services.length / ITEMS_PER_PAGE)} totalItems={services.length} />
+                </div>
+              </div>
             </div>
           )}
 
@@ -1852,9 +2196,10 @@ export default function AdminPage() {
           {activeTab === "Billing" && (
             <div className="animate-in slide-in-from-right-2 duration-300">
               <h2 className="text-xl font-bold mb-6 text-gray-800">Billing & Payments</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-gray-600 font-bold sticky top-0">
+              <div className="border border-gray-100 rounded-2xl overflow-hidden flex flex-col max-h-[calc(100vh-320px)] bg-white shadow-sm">
+                <div className="overflow-auto flex-1">
+                  <table className="w-full text-left text-sm border-separate border-spacing-0">
+                    <thead className="bg-gray-50 text-gray-600 font-bold sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-3 rounded-l-xl">Customer</th>
                       <th className="px-4 py-3">Service</th>
@@ -1903,7 +2248,10 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
-              <PaginationControls total={Math.ceil(payments.length / ITEMS_PER_PAGE)} totalItems={payments.length} />
+                <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 z-20">
+                  <PaginationControls total={Math.ceil(payments.length / ITEMS_PER_PAGE)} totalItems={payments.length} />
+                </div>
+              </div>
               {payments.length === 0 && !loading && (
                 <p className="text-center text-gray-400 py-10 italic">No payment records found.</p>
               )}
